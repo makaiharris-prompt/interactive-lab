@@ -177,7 +177,7 @@ describe("lab CLI: commit-batch", () => {
     for (const bad of [noPoster, otherDay]) {
       expect(() =>
         lab("commit-batch", "--lab", dir, "--date", "2026-10-30", "--id", good, "--id", bad),
-      ).toThrow(bad === noPoster ? /no poster\.png/ : /dated 2026-10-31/);
+      ).toThrow(bad === noPoster ? /no poster/ : /dated 2026-10-31/);
     }
     expect(git(dir, "rev-parse", "HEAD")).toBe(before);
     expect(git(dir, "diff", "--cached", "--name-only")).toBe("");

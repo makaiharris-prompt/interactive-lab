@@ -17,8 +17,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import type { AddressInfo } from "node:net";
 import { extname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { openLab } from "./lab/index.ts";
-import { readRules } from "./lab/rules.ts";
+import { openLab, type Lab } from "./lab/index.ts";
 
 const INTERACTION_HTML = /^\/lab\/interactions\/([^/]+)\/index\.html$/;
 const INTERACTION_SOURCE = /^\/lab\/interactions\/([^/]+)\/source\.html$/;
@@ -66,7 +65,7 @@ function createMiddleware(
     if (html === undefined) return notFound(res, "No such Interaction");
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "no-store");
-    res.end(withImportMap(html, importMap(labDir, vendorDir)));
+    res.end(withImportMap(html, importMap(lab, vendorDir)));
   }
 
   function handle(req: IncomingMessage, res: ServerResponse, next?: () => void): void {
@@ -100,7 +99,7 @@ function createMiddleware(
     if (preview) return servePage(res, previews.get(preview[1]!));
 
     if (path.startsWith(VENDOR_URL)) {
-      const file = vendoredFile(labDir, vendorDir, decodeURIComponent(path.slice(VENDOR_URL.length)));
+      const file = vendoredFile(lab, vendorDir, decodeURIComponent(path.slice(VENDOR_URL.length)));
       if (file === undefined) return notFound(res, "Not a vendored file of an allow-listed library");
       res.setHeader("Content-Type", CONTENT_TYPES[extname(file)] ?? "application/octet-stream");
       // Interactions run in sandboxed iframes without allow-same-origin, so their module
@@ -166,9 +165,9 @@ interface ImportMap {
   imports: Record<string, string>;
 }
 
-function importMap(labDir: string, vendorDir: string): ImportMap {
+function importMap(lab: Lab, vendorDir: string): ImportMap {
   const imports: Record<string, string> = {};
-  for (const name of readRules(labDir).libraries) {
+  for (const name of lab.libraries()) {
     const entry = join(vendorDir, name, "index.js");
     if (!existsSync(entry)) {
       throw new Error(`Library "${name}" is on the rules.yaml allow-list but isn't vendored: expected ${entry}`);
@@ -180,9 +179,9 @@ function importMap(labDir: string, vendorDir: string): ImportMap {
 }
 
 /** `<library>/<file>` → the file on disk, if the library is allow-listed and the file is inside its folder. */
-function vendoredFile(labDir: string, vendorDir: string, path: string): string | undefined {
+function vendoredFile(lab: Lab, vendorDir: string, path: string): string | undefined {
   const library = path.split("/")[0]!;
-  if (!readRules(labDir).libraries.includes(library)) return undefined;
+  if (!lab.libraries().includes(library)) return undefined;
   const libraryDir = join(vendorDir, library);
   const file = join(vendorDir, path);
   const inside = relative(libraryDir, file);

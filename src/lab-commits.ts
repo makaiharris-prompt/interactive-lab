@@ -5,8 +5,7 @@
  * and it never pushes.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { openLab } from "./lab/index.ts";
 
 export interface CommitResult {
   /** Whether a commit was made. */
@@ -15,17 +14,16 @@ export interface CommitResult {
   files: string[];
 }
 
-const VERDICT_FILE = /^interactions\/\d{4}-\d{2}-\d{2}-[a-z]\/(meta\.json|index\.html)$/;
-
 /**
  * Commit every pending Verdict as `lab: verdicts`. A Verdict changes an Interaction's
  * `meta.json`, and a Toss also deletes its `index.html`; nothing else is committed.
  */
 export function commitVerdicts(labDir: string): CommitResult {
-  const files = trackedChanges(labDir, "interactions/").filter(
-    ({ status, path }) =>
-      VERDICT_FILE.test(path) && (path.endsWith("meta.json") ? status.includes("M") : status.includes("D")),
-  );
+  const lab = openLab(labDir);
+  const files = trackedChanges(labDir).filter(({ status, path }) => {
+    const kind = lab.interactionFileAt(path)?.kind;
+    return kind === "meta" ? status.includes("M") : kind === "html" && status.includes("D");
+  });
   return commitOnly(labDir, "lab: verdicts", files.map(({ path }) => path));
 }
 
@@ -35,14 +33,14 @@ export function commitVerdicts(labDir: string): CommitResult {
  */
 export function commitBatch(labDir: string, date: string, ids: string[]): CommitResult {
   if (ids.length === 0) throw new Error("commit-batch needs at least one Interaction id");
+  const lab = openLab(labDir);
   const folders = ids.map((id) => {
-    const folder = join("interactions", id);
-    for (const file of ["index.html", "meta.json", "poster.png"]) {
-      if (!existsSync(join(labDir, folder, file))) throw new Error(`${id} has no ${file}`);
-    }
-    const meta = JSON.parse(readFileSync(join(labDir, folder, "meta.json"), "utf8"));
-    if (meta.date !== date) throw new Error(`${id} is dated ${meta.date}, not ${date}`);
-    return folder;
+    const files = lab.interactionFiles(id);
+    if (!files) throw new Error(`No Interaction "${id}"`);
+    if (!files.html) throw new Error(`${id} has no HTML`);
+    if (!files.poster) throw new Error(`${id} has no poster`);
+    if (files.date !== date) throw new Error(`${id} is dated ${files.date}, not ${date}`);
+    return files.folder;
   });
   git(labDir, "add", "--", ...folders);
   const files = git(labDir, "diff", "--cached", "--name-only", "--", ...folders).split("\n").filter(Boolean);
@@ -56,9 +54,9 @@ function commitOnly(labDir: string, message: string, paths: string[], files = pa
   return { committed: true, files };
 }
 
-/** Tracked files changed under `dir` (staged or not), with their two-letter porcelain status. */
-function trackedChanges(labDir: string, dir: string): { status: string; path: string }[] {
-  const entries = git(labDir, "status", "--porcelain=v1", "-z", "--untracked-files=no", "--", dir).split("\0");
+/** Tracked files changed in the lab directory (staged or not), with their two-letter porcelain status. */
+function trackedChanges(labDir: string): { status: string; path: string }[] {
+  const entries = git(labDir, "status", "--porcelain=v1", "-z", "--untracked-files=no", "--", ".").split("\0");
   const changes: { status: string; path: string }[] = [];
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i]!;

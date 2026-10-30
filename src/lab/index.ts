@@ -66,6 +66,22 @@ export interface KeptItem extends InteractionSummary {
   note: string | null;
 }
 
+/** One of the files in an Interaction's folder (ADR 0006): its HTML, `meta.json` or `poster.png`. */
+export type InteractionFileKind = "html" | "meta" | "poster";
+
+/** Where an Interaction's files are, as paths relative to the lab directory. */
+export interface InteractionFiles {
+  /** The Daily batch's date, `YYYY-MM-DD`. */
+  date: string;
+  /** The Interaction's folder. */
+  folder: string;
+  meta: string;
+  /** Missing once Tossed. */
+  html?: string;
+  /** Missing until the Smoke check saves one. */
+  poster?: string;
+}
+
 /** A Verdict: Keep or Toss. */
 export type Verdict = "keep" | "toss";
 
@@ -155,6 +171,15 @@ export interface Lab {
   interactionHtml(id: string): string | undefined;
   /** An Interaction's `poster.png` thumbnail (saved by the Smoke check), or `undefined` if there is none. */
   interactionPoster(id: string): Buffer | undefined;
+  /** Where an Interaction's files are, or `undefined` for an unknown id. */
+  interactionFiles(id: string): InteractionFiles | undefined;
+  /**
+   * Which Interaction's file a path relative to the lab directory (with `/` separators) is,
+   * e.g. `{ id: "2026-10-30-a", kind: "meta" }`; `undefined` if it isn't one.
+   */
+  interactionFileAt(path: string): { id: string; kind: InteractionFileKind } | undefined;
+  /** The `libraries:` allow-list in `rules.yaml`: the only libraries an Interaction may import. */
+  libraries(): string[];
   /** Record a Verdict (or un-keep) in the Interaction's metadata. It replaces any earlier Verdict. */
   recordVerdict(input: VerdictInput): void;
   /**
@@ -251,6 +276,19 @@ export function openLab(labDir: string): Lab {
 
     interactionPoster(id) {
       return storage.readPoster(id);
+    },
+
+    interactionFiles(id) {
+      const files = storage.files(id);
+      return files && { date: storage.readMeta(id).date, ...files };
+    },
+
+    interactionFileAt(path) {
+      return storage.fileAt(path);
+    },
+
+    libraries() {
+      return readRules(labDir).libraries;
     },
 
     recordVerdict({ id, action, note = null }) {
