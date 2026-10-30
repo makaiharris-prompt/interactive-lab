@@ -49,7 +49,7 @@ export function interactionMiddleware(options: InteractionServingOptions): Inter
   const { labDir, vendorDir = REPO_VENDOR_DIR } = options;
   const lab = openLab(labDir);
 
-  return (req, res, next) => {
+  function handle(req: IncomingMessage, res: ServerResponse, next?: () => void): void {
     const path = new URL(req.url ?? "/", "http://localhost").pathname;
 
     const match = INTERACTION_HTML.exec(path);
@@ -58,7 +58,7 @@ export function interactionMiddleware(options: InteractionServingOptions): Inter
       if (html === undefined) return notFound(res, "No such Interaction");
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       res.setHeader("Cache-Control", "no-store");
-      res.end(withImportMap(html, importMap(labDir)));
+      res.end(withImportMap(html, importMap(labDir, vendorDir)));
       return;
     }
 
@@ -75,6 +75,16 @@ export function interactionMiddleware(options: InteractionServingOptions): Inter
 
     if (next) next();
     else notFound(res, "Not found");
+  }
+
+  return (req, res, next) => {
+    try {
+      handle(req, res, next);
+    } catch (err) {
+      if (next) return next(err);
+      res.statusCode = 500;
+      res.end(err instanceof Error ? err.message : String(err));
+    }
   };
 }
 
@@ -111,9 +121,13 @@ interface ImportMap {
   imports: Record<string, string>;
 }
 
-function importMap(labDir: string): ImportMap {
+function importMap(labDir: string, vendorDir: string): ImportMap {
   const imports: Record<string, string> = {};
   for (const name of readRules(labDir).libraries) {
+    const entry = join(vendorDir, name, "index.js");
+    if (!existsSync(entry)) {
+      throw new Error(`Library "${name}" is on the rules.yaml allow-list but isn't vendored: expected ${entry}`);
+    }
     imports[name] = `${VENDOR_URL}${name}/index.js`;
     imports[`${name}/`] = `${VENDOR_URL}${name}/`;
   }

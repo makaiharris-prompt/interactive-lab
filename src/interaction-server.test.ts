@@ -123,4 +123,15 @@ describe("interaction server", () => {
     expect(missing.status).toBe(404);
     expect(escaping.status).toBe(404);
   });
+
+  it("fails loudly when an allow-listed library hasn't been vendored", async () => {
+    const { labDir, id } = makeLab(["three", "gsap"]);
+    const vendorDir = makeVendor({ "three/index.js": "" });
+    const server = await start({ labDir, vendorDir });
+
+    const res = await fetch(server.interactionUrl(id));
+
+    expect(res.status).toBe(500);
+    expect(await res.text()).toMatch(/"gsap" is on the rules\.yaml allow-list but isn't vendored/);
+  });
 });
