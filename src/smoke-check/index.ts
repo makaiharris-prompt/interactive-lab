@@ -1,19 +1,43 @@
+/**
+ * The Smoke check (ADR 0004): the gate every Interaction must pass before the lab owner sees it.
+ *
+ * It loads an Interaction in headless Chromium the way the Gallery does (served by the shared
+ * interaction server, so allow-listed libraries resolve through the import map, inside an
+ * iframe sandboxed like the Gallery's) and fails it on:
+ *   - any console error or uncaught exception while loading
+ *   - a rendered frame that is one flat color (catches silent WebGL failures)
+ *   - any console error or uncaught exception after a pointer sweep across the viewport
+ */
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 import { startInteractionServer } from "../interaction-server.ts";
 
 const VIEWPORT = { width: 800, height: 600 };
 
+/** Same sandbox as the Gallery's stage iframe (gallery/main.ts). */
+const SANDBOX = "allow-scripts";
+
+/** How long an Interaction gets to draw its first frames after loading, and to react to the pointer. */
+const SETTLE_MS = 500;
+const AFTER_POINTER_MS = 250;
+
 export interface SmokeCheckOptions {
+  /** The lab directory whose `rules.yaml` allow-list builds the import map. */
   labDir: string;
+  /** Where vendored libraries live. Defaults to this repo's `vendor/`. */
   vendorDir?: string;
 }
 
 export interface SmokeResult {
   pass: boolean;
+  /** What went wrong, each prefixed with when: `while loading: …`, `blank frame: …`, `after pointer move: …`. */
   errors: string[];
+  /** A PNG of the Interaction after it settles, before the pointer moves. */
   thumbnail: Buffer;
 }
 
+/** Smoke check an Interaction's HTML. */
 export async function smokeCheck(html: string, options: SmokeCheckOptions): Promise<SmokeResult> {
   const server = await startInteractionServer(options);
   const browser = await chromium.launch();
@@ -28,10 +52,10 @@ export async function smokeCheck(html: string, options: SmokeCheckOptions): Prom
 
     await page.setContent(
       `<style>html,body{margin:0;height:100%}iframe{border:0;width:100%;height:100%;display:block}</style>` +
-        `<iframe sandbox="allow-scripts" src="${server.previewUrl(html)}"></iframe>`,
+        `<iframe sandbox="${SANDBOX}" src="${server.previewUrl(html)}"></iframe>`,
     );
     await page.waitForLoadState("load");
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(SETTLE_MS);
     const thumbnail = await page.screenshot();
     if (await isBlank(browser, thumbnail)) {
       errors.push("blank frame: every pixel of the rendered frame is the same color");
@@ -39,13 +63,39 @@ export async function smokeCheck(html: string, options: SmokeCheckOptions): Prom
 
     phase = "after pointer move";
     await sweepPointer(page);
-    await page.waitForTimeout(250);
+    await page.waitForTimeout(AFTER_POINTER_MS);
 
+    // A handler that throws on every frame or move reports the same error many times.
     return { pass: errors.length === 0, errors: [...new Set(errors)], thumbnail };
   } finally {
     await browser.close();
     await server.close();
   }
+}
+
+export interface InteractionSmokeResult {
+  pass: boolean;
+  errors: string[];
+  /** The `poster.png` written into the folder, or `null` when the check failed. */
+  poster: string | null;
+}
+
+/**
+ * Smoke check the `index.html` in an Interaction's folder. A pass saves the thumbnail as
+ * `poster.png` beside it; a failure removes any `poster.png` left from an earlier attempt.
+ */
+export async function smokeCheckInteraction(
+  folder: string,
+  options: SmokeCheckOptions,
+): Promise<InteractionSmokeResult> {
+  const { pass, errors, thumbnail } = await smokeCheck(readFileSync(join(folder, "index.html"), "utf8"), options);
+  const poster = join(folder, "poster.png");
+  if (!pass) {
+    rmSync(poster, { force: true });
+    return { pass, errors, poster: null };
+  }
+  writeFileSync(poster, thumbnail);
+  return { pass, errors, poster };
 }
 
 /** Move the pointer across the viewport: corner to corner, then side to side through the middle. */
