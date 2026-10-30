@@ -45,4 +45,39 @@ describe("pick briefs", () => {
     }
     expect(picked.filter((p) => p.wildcard)).toHaveLength(1);
   });
+
+  it("always returns the same Briefs for the same date and seed", () => {
+    const lab = openLab(makeLabDir());
+
+    const first = lab.pickBriefs({ date: "2026-10-30", seed: 42 });
+    const again = openLab(makeLabDir()).pickBriefs({ date: "2026-10-30", seed: 42 });
+
+    expect(again).toEqual(first);
+  });
+
+  it("varies the Briefs with the seed and the date", () => {
+    const lab = openLab(makeLabDir());
+    const base = lab.pickBriefs({ date: "2026-10-30", seed: 42 });
+
+    const otherSeeds = [1, 2, 3, 4, 5].map((seed) => lab.pickBriefs({ date: "2026-10-30", seed }));
+    const otherDates = ["2026-10-31", "2026-11-01", "2026-11-02"].map((date) =>
+      lab.pickBriefs({ date, seed: 42 }),
+    );
+
+    expect(otherSeeds.some((p) => JSON.stringify(p) !== JSON.stringify(base))).toBe(true);
+    expect(otherDates.some((p) => JSON.stringify(p) !== JSON.stringify(base))).toBe(true);
+  });
+
+  it("includes an Axis added to the rules file, with no code change", () => {
+    const lab = openLab(
+      makeLabDir(`${RULES.replace("axes:\n", "axes:\n  palette: [mono, neon]\n")}`),
+    );
+
+    const picked = lab.pickBriefs({ date: "2026-10-30", seed: 7 });
+
+    for (const { brief } of picked) {
+      expect(["mono", "neon"]).toContain(brief.palette);
+      expect(Object.keys(brief)).toHaveLength(5);
+    }
+  });
 });
