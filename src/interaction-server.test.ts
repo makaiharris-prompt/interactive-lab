@@ -134,4 +134,32 @@ describe("interaction server", () => {
     expect(res.status).toBe(500);
     expect(await res.text()).toMatch(/"gsap" is on the rules\.yaml allow-list but isn't vendored/);
   });
+
+  it("serves HTML that isn't a registered Interaction yet the same way, for the Smoke check", async () => {
+    const { labDir } = makeLab(["three"]);
+    const vendorDir = makeVendor({ "three/index.js": "" });
+    const server = await start({ labDir, vendorDir });
+    const candidate = SAMPLE_HTML.replace("Sample", "Candidate");
+
+    const res = await fetch(server.previewUrl(candidate));
+    const html = await res.text();
+
+    expect(res.status).toBe(200);
+    expect(html).toContain("<title>Candidate</title>");
+    expect(importMapOf(html).imports.three).toBe("/lab/vendor/three/index.js");
+  });
+
+  it("serves the repo's own vendored three.js for the repo's rules.yaml", async () => {
+    const repoDir = join(import.meta.dirname, "..");
+    const server = await start({ labDir: repoDir });
+
+    const entry = await fetch(`${server.url}/lab/vendor/three/index.js`);
+    const core = await fetch(`${server.url}/lab/vendor/three/three.core.js`);
+    const orbit = await fetch(`${server.url}/lab/vendor/three/addons/controls/OrbitControls.js`);
+
+    expect(entry.status).toBe(200);
+    expect(core.status).toBe(200);
+    expect(await core.text()).toContain("const REVISION = '186'");
+    expect(orbit.status).toBe(200);
+  });
 });
