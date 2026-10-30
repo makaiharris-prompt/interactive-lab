@@ -1,0 +1,137 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ballast Column</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    touch-action: none; user-select: none; -webkit-user-select: none;
+    font-family: system-ui, -apple-system, "Inter", sans-serif;
+    background: radial-gradient(70% 60% at 50% 45%, #1b1730 0%, #0f0e17 55%, #0b0b0f 100%);
+  }
+  canvas { position: fixed; inset: 0; display: block; }
+  #hint { position: fixed; left: 20px; bottom: 18px; font-size: 11px; letter-spacing: .08em; color: #57536b; pointer-events: none; }
+  #depth { position: fixed; right: 20px; bottom: 18px; font-size: 11px; letter-spacing: .14em; color: #8a83b0; font-variant-numeric: tabular-nums; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="hint">scroll or drag to move the weight</div>
+<div id="depth">01 / 13</div>
+<script type="module">
+import * as THREE from "three";
+
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const depthEl = document.getElementById("depth");
+const N = 13, GAP = .42;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+renderer.setClearColor(0x000000, 0);
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x0e0d16, 9, 16);
+const camera = new THREE.PerspectiveCamera(32, 1, .1, 50);
+const stack = new THREE.Group();
+stack.rotation.x = .26;
+scene.add(stack);
+
+scene.add(new THREE.HemisphereLight(0x8a80c8, 0x09080e, .55));
+const rim = new THREE.DirectionalLight(0xb7a8ff, 1.1);
+rim.position.set(-4, 3, -3); scene.add(rim);
+const weightLight = new THREE.PointLight(0x9d7bff, 5, 4, 1.8);
+stack.add(weightLight);
+
+// soft glow that rides with the weight
+const gc = document.createElement("canvas"); gc.width = gc.height = 128;
+const g2 = gc.getContext("2d");
+const grad = g2.createRadialGradient(64, 64, 0, 64, 64, 64);
+grad.addColorStop(0, "rgba(160,130,255,.55)"); grad.addColorStop(.4, "rgba(110,80,220,.18)"); grad.addColorStop(1, "rgba(80,60,200,0)");
+g2.fillStyle = grad; g2.fillRect(0, 0, 128, 128);
+const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(gc), blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+glow.scale.set(5, 3.2, 1);
+stack.add(glow);
+
+const geo = new THREE.TorusGeometry(1, .12, 32, 128);
+const rings = [];
+for (let i = 0; i < N; i++) {
+  const mat = new THREE.MeshStandardMaterial({ color: 0x3a3650, roughness: .38, metalness: .45, emissive: 0x6a4cff, emissiveIntensity: 0 });
+  const m = new THREE.Mesh(geo, mat);
+  m.rotation.x = Math.PI / 2;
+  m.position.y = (N - 1) / 2 * GAP - i * GAP;
+  const base = .62 + .3 * Math.sin(i / (N - 1) * Math.PI * .9 + .25); // a vase-like silhouette
+  rings.push({ m, mat, base, s: 0, v: 0 });
+  stack.add(m);
+}
+
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  const fit = Math.max(1, 1.1 / camera.aspect); // pull back on narrow screens
+  camera.position.set(0, .4, 11.5 * fit);
+  camera.lookAt(0, 0, 0);
+  camera.updateProjectionMatrix();
+  if (reduce) render(performance.now());
+}
+
+// scroll drives a target ring index; the weight follows on a heavy spring
+let target = 2.5, pos = 2.5, vel = 0, lastInput = -1e9, prev = performance.now();
+function nudge(d) {
+  target = Math.min(N - 1, Math.max(0, target + d));
+  lastInput = performance.now();
+  if (reduce) { pos = target; render(lastInput); }
+}
+addEventListener("wheel", e => { e.preventDefault(); nudge(e.deltaY * .006); }, { passive: false });
+let dragY = null;
+addEventListener("pointerdown", e => { dragY = e.clientY; });
+addEventListener("pointermove", e => {
+  if (dragY === null) return;
+  nudge((dragY - e.clientY) * -.02); dragY = e.clientY;
+});
+addEventListener("pointerup", () => { dragY = null; });
+addEventListener("pointercancel", () => { dragY = null; });
+addEventListener("keydown", e => {
+  if (e.key === "ArrowDown" || e.key === "PageDown") nudge(1);
+  if (e.key === "ArrowUp" || e.key === "PageUp") nudge(-1);
+});
+addEventListener("resize", resize);
+
+function render(t) {
+  const dt = Math.min(.033, (t - prev) / 1000); prev = t;
+  const s = t / 1000;
+  if (!reduce) {
+    if (t - lastInput > 4000) target += (((N - 1) / 2 + Math.sin(s * .16) * 4.5) - target) * (1 - Math.exp(-dt * .6));
+    vel += ((target - pos) * 9 - vel * 5.2) * dt; // heavy, barely underdamped
+    pos += vel * dt;
+    stack.rotation.y = s * .08;
+  }
+  const y = (N - 1) / 2 * GAP - pos * GAP;
+  weightLight.position.set(0, y, 0);
+  glow.position.set(0, y, -.6);
+
+  for (let i = 0; i < N; i++) {
+    const r = rings[i];
+    const goal = Math.exp(-((i - pos) ** 2) / 2.6);
+    if (reduce) r.s = goal;
+    else { // each ring has its own mass, so the swell rolls through the column
+      r.v += ((goal - r.s) * 34 - r.v * 6.5) * dt;
+      r.s += r.v * dt;
+    }
+    const R = r.base * (1 + .3 * r.s), T = 1 + .6 * r.s;
+    r.m.scale.set(R, R, T); // local z is the tube's height once the ring lies flat
+    r.m.position.y = (N - 1) / 2 * GAP - i * GAP - Math.sign(i - pos) * r.s * .04;
+    r.mat.emissiveIntensity = .16 * r.s * r.s;
+  }
+  depthEl.textContent = String(Math.round(pos) + 1).padStart(2, "0") + " / " + N;
+  renderer.render(scene, camera);
+  if (!reduce) requestAnimationFrame(render);
+}
+
+resize();
+render(performance.now());
+</script>
+</body>
+</html>

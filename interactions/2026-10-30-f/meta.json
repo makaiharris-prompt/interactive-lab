@@ -1,0 +1,15 @@
+{
+  "brief": {
+    "trigger": "scroll",
+    "subject": "abstract form",
+    "technique": "three.js scene",
+    "feel": "weighty",
+    "look": "soft gradient glow",
+    "inspiration": "Text Pressure (letters that swell near the cursor)"
+  },
+  "wildcard": false,
+  "title": "Ballast Column",
+  "date": "2026-10-30",
+  "verdict": null,
+  "note": null
+}
