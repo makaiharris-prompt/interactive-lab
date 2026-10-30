@@ -421,6 +421,41 @@ describe("Weights", () => {
     expect(lab.weights().feel.springy).toBeCloseTo(1 / 3);
   });
 
+  it("raises a much-Tossed value to 5% of its Axis's total, leaving the others alone", () => {
+    const lab = openLab(makeLabDir("axes:\n  trigger: [hover, click, drag]\n"));
+    // 38 Tosses: (0 + 1) / (38 + 2) = 0.025, only 2.4% of 0.025 + 0.5 + 0.5.
+    judgedHistory(lab, repeat(38, { brief: { trigger: "hover" }, verdict: "toss" as const }));
+
+    const { trigger } = lab.weights();
+
+    // hover = 5% of (hover + 1)  →  hover = 0.05 / 0.95 = 1/19.
+    expect(trigger).toEqual({ hover: expect.closeTo(1 / 19), click: 0.5, drag: 0.5 });
+    expect(share(trigger!, "hover")).toBeCloseTo(0.05);
+  });
+
+  it("keeps every value at 5% or more even when several need raising", () => {
+    const lab = openLab(makeLabDir("axes:\n  trigger: [hover, click, drag]\n"));
+    judgedHistory(lab, [
+      ...repeat(38, { brief: { trigger: "hover" }, verdict: "toss" as const }),
+      ...repeat(38, { brief: { trigger: "click" }, verdict: "toss" as const }),
+      ...repeat(40, { brief: { trigger: "drag" }, verdict: "keep" as const }),
+    ]);
+
+    const { trigger } = lab.weights();
+
+    // drag = 41/42 and stays put; hover and click each end up at exactly 5% of the total.
+    expect(trigger!.drag).toBeCloseTo(41 / 42);
+    expect(share(trigger!, "hover")).toBeCloseTo(0.05);
+    expect(share(trigger!, "click")).toBeCloseTo(0.05);
+  });
+
+  it("leaves an Axis with more than 20 untried values evenly weighted", () => {
+    const values = Array.from({ length: 25 }, (_, i) => `v${i}`);
+    const lab = openLab(makeLabDir(`axes:\n  shape: [${values.join(", ")}]\n`));
+
+    expect(Object.values(lab.weights().shape!)).toEqual(repeat(25, 0.5));
+  });
+
   it("ignores past Briefs' values that are no longer in the rules file", () => {
     const lab = openLab(makeLabDir(SMALL_RULES));
     judgedHistory(lab, [{ brief: { trigger: "scroll", feel: "springy", palette: "neon" }, verdict: "keep" }]);
