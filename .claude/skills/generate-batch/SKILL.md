@@ -100,7 +100,12 @@ Each Brief gets **two attempts**:
 
    Pass `--wildcard` exactly when the dropped Brief was the Wildcard, so the batch keeps exactly one. Pass one `--exclude` per Brief in **picked today** (originals and earlier replacements, including those already registered). Add the printed Brief to **picked today**, then start this slot again at 5a with a fresh idea for the new Brief (delete `drafts/<slot>/` first).
 
-A slot gets at most 2 replacements: 3 Briefs, 6 attempts. If the last one fails too, leave the slot **empty**, keep its drafts for the report, and move on to the next slot.
+Replacements are capped so an unattended run always ends (ADR 0004, amendment):
+
+- **An ordinary slot** gets at most 2 replacements: 3 Briefs, 6 attempts.
+- **The Wildcard slot** gets at most 5 replacements: 6 Briefs, 12 attempts. Every one is a Wildcard replacement (`--wildcard`), so the batch keeps its Wildcard unless all 6 fail.
+
+If the last Brief a slot may have fails too, or `pick-replacement` says no Brief is left, leave the slot **empty**, keep its drafts for the report, and move on to the next slot. Never fill an empty slot any other way: an ordinary slot is never refilled with a Wildcard, nor the Wildcard slot with an ordinary Brief.
 
 ### 5d. Register it
 
@@ -128,7 +133,13 @@ Done when `git log -2 --format=%s` shows `lab: batch $DATE` on top (with `lab: v
 
 ## 7. Report
 
-End with a short report:
+End with a short report. If any slot is empty, the batch is **short**: the report's very first line must say so, in capitals, before anything else, e.g.
+
+```
+SHORT BATCH: 2 of 3 Interactions registered. NO WILDCARD TODAY (slot 2 failed 6 Wildcard Briefs).
+```
+
+Say `NO WILDCARD TODAY` whenever the Wildcard slot is the empty one. A full batch has no such line. Then:
 
 - each Interaction: id, title, its Brief on one line, and `(Wildcard)` on the Wildcard;
 - every retry and replacement: which Brief, and the Smoke check errors that caused it;
