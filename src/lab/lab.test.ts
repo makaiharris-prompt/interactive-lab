@@ -121,6 +121,22 @@ describe("register Interaction", () => {
     expect(existsSync(join(dir, "interactions", "2026-10-30-b", "index.html"))).toBe(true);
   });
 
+  it("saves the Smoke check's poster into the Interaction's folder as poster.png", () => {
+    const dir = makeLabDir();
+    const poster = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+
+    const { id } = openLab(dir).registerInteraction({
+      brief: BRIEF,
+      wildcard: false,
+      title: "Springy card",
+      date: "2026-10-30",
+      html: HTML,
+      poster,
+    });
+
+    expect(readFileSync(join(dir, "interactions", id, "poster.png"))).toEqual(poster);
+  });
+
   it("starts with an empty Inbox in a lab with no Interactions", () => {
     expect(openLab(makeLabDir()).inbox()).toEqual([]);
   });
@@ -315,6 +331,36 @@ describe("repeat avoidance", () => {
     }
 
     expect(() => lab.pickBriefs({ date: "2026-10-30", seed: 1 })).toThrow(/30 days/);
+  });
+});
+
+describe("pick a replacement Brief", () => {
+  it("avoids the Briefs already picked today as well as those from the last 30 days", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    registerHistory(
+      lab,
+      [
+        { trigger: "hover", feel: "springy" },
+        { trigger: "hover", feel: "snappy" },
+        { trigger: "hover", feel: "eerie" },
+        { trigger: "click", feel: "springy" },
+      ],
+      "2026-10-01",
+    );
+    const pickedToday = [
+      { trigger: "click", feel: "snappy" },
+      { trigger: "click", feel: "eerie" },
+      { trigger: "drag", feel: "springy" },
+      { trigger: "drag", feel: "snappy" },
+    ];
+
+    for (let seed = 0; seed < 20; seed++) {
+      for (const wildcard of [true, false]) {
+        const replacement = lab.pickReplacement({ date: "2026-10-30", seed, wildcard, exclude: pickedToday });
+
+        expect(replacement).toEqual({ brief: { trigger: "drag", feel: "eerie" }, wildcard });
+      }
+    }
   });
 });
 

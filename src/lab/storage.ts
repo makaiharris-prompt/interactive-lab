@@ -4,6 +4,7 @@
  *   interactions/2026-10-30-a/
  *     index.html   the Interaction
  *     meta.json    Brief, Wildcard flag, title, date, Verdict, Note
+ *     poster.png   the Smoke check's thumbnail
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -62,7 +63,7 @@ export class Storage {
   }
 
   /** Create the next folder for `date` (a, b, c, …) and write the Interaction into it. */
-  create(meta: Meta, html: string): string {
+  create(meta: Meta, html: string, poster?: Uint8Array): string {
     if (!DATE.test(meta.date)) throw new Error(`Date must be YYYY-MM-DD, got "${meta.date}"`);
     const taken = new Set(this.ids().filter((id) => id.startsWith(`${meta.date}-`)));
     const position = [...POSITIONS].find((letter) => !taken.has(`${meta.date}-${letter}`));
@@ -71,6 +72,7 @@ export class Storage {
     const id = `${meta.date}-${position}`;
     mkdirSync(this.folder(id), { recursive: true });
     writeFileSync(join(this.folder(id), "index.html"), html);
+    if (poster) writeFileSync(join(this.folder(id), "poster.png"), poster);
     this.writeMeta(id, meta);
     return id;
   }

@@ -28,6 +28,13 @@ export interface PickBriefsOptions {
   seed: string | number;
 }
 
+export interface PickReplacementOptions extends PickBriefsOptions {
+  /** Whether the replacement stands in for the Wildcard (it then samples like one). */
+  wildcard: boolean;
+  /** Briefs to avoid on top of the last 30 days': every Brief already picked for this batch. */
+  exclude: Brief[];
+}
+
 export interface NewInteraction {
   brief: Brief;
   wildcard: boolean;
@@ -37,6 +44,8 @@ export interface NewInteraction {
   date: string;
   /** The Interaction itself: one self-contained HTML file. */
   html: string;
+  /** The thumbnail the Smoke check took, saved as the Interaction's `poster.png`. */
+  poster?: Uint8Array;
 }
 
 /** An Interaction with no Verdict yet. */
@@ -116,6 +125,12 @@ export interface Lab {
    * 30 days; throws if every possible Brief was used in that window.
    */
   pickBriefs(options: PickBriefsOptions): PickedBrief[];
+  /**
+   * Pick one Brief to replace one dropped from a Daily batch (it failed the Smoke check twice).
+   * It samples like the Brief it replaces (by Weight, or as the Wildcard) and avoids the Briefs
+   * in `exclude` as well as those from the last 30 days; throws if no Brief is left.
+   */
+  pickReplacement(options: PickReplacementOptions): PickedBrief;
   /** Store a new Interaction and its metadata. It lands in the Inbox. */
   registerInteraction(interaction: NewInteraction): { id: string };
   /** Interactions without a Verdict, oldest first. */
@@ -143,40 +158,56 @@ export interface Lab {
 export function openLab(labDir: string): Lab {
   const storage = new Storage(labDir);
 
-  return {
-    pickBriefs({ date, seed }) {
-      const { axes } = readRules(labDir);
-      const random = seededRandom(`${date}\u0000${seed}`);
-      const wildcardIndex = Math.floor(random() * BATCH_SIZE);
-      const history = storage.ids().map((id) => storage.readMeta(id));
-      const pastBriefs = history.map((past) => past.brief);
-      const weights = computeWeights(axes, history);
+  /**
+   * Picks Briefs for the batch on `date` one at a time, never repeating a Brief from the
+   * last 30 days, one in `exclude`, or one it already picked.
+   */
+  function briefPicker(date: string, seed: string | number, exclude: readonly Brief[]) {
+    const { axes } = readRules(labDir);
+    const random = seededRandom(`${date}\u0000${seed}`);
+    const history = storage.ids().map((id) => storage.readMeta(id));
+    const pastBriefs = history.map((past) => past.brief);
+    const weights = computeWeights(axes, history);
 
-      // Briefs used in the last 30 days (ADR 0005), plus the ones already in this batch.
-      const used = new Set(
-        history
-          .filter((past) => daysBetween(past.date, date) < REPEAT_WINDOW_DAYS)
-          .map((past) => briefKey(axes, past.brief)),
-      );
+    // Briefs used in the last 30 days (ADR 0005), plus the excluded ones and those already picked.
+    const used = new Set([
+      ...history
+        .filter((past) => daysBetween(past.date, date) < REPEAT_WINDOW_DAYS)
+        .map((past) => briefKey(axes, past.brief)),
+      ...exclude.map((brief) => briefKey(axes, brief)),
+    ]);
 
-      return Array.from({ length: BATCH_SIZE }, (_, i) => {
-        const wildcard = i === wildcardIndex;
+    return {
+      random,
+      pick(wildcard: boolean): PickedBrief {
         const sample = wildcard
           ? () => wildcardBrief(axes, pastBriefs, random)
           : () => ordinaryBrief(axes, weights, random);
         const brief = unusedBrief(axes, sample, used, random);
         if (!brief) {
           throw new Error(
-            `Every possible Brief was already used in the last ${REPEAT_WINDOW_DAYS} days; add Axis values to rules.yaml`,
+            `Every possible Brief was already used in the last ${REPEAT_WINDOW_DAYS} days or picked today; add Axis values to rules.yaml`,
           );
         }
         used.add(briefKey(axes, brief));
         return { brief, wildcard };
-      });
+      },
+    };
+  }
+
+  return {
+    pickBriefs({ date, seed }) {
+      const picker = briefPicker(date, seed, []);
+      const wildcardIndex = Math.floor(picker.random() * BATCH_SIZE);
+      return Array.from({ length: BATCH_SIZE }, (_, i) => picker.pick(i === wildcardIndex));
     },
 
-    registerInteraction({ brief, wildcard, title, date, html }) {
-      const id = storage.create({ brief, wildcard, title, date, verdict: null, note: null }, html);
+    pickReplacement({ date, seed, wildcard, exclude }) {
+      return briefPicker(date, seed, exclude).pick(wildcard);
+    },
+
+    registerInteraction({ brief, wildcard, title, date, html, poster }) {
+      const id = storage.create({ brief, wildcard, title, date, verdict: null, note: null }, html, poster);
       return { id };
     },
 
