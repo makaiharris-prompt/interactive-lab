@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -48,5 +48,46 @@ describe("lab CLI: taste-context", () => {
       tossNotes: [{ id: tossed.id, title: "Fog field", brief: BRIEF, note: "too muddy" }],
       recentTitles: ["Fog field", "Rubber card"],
     });
+  });
+});
+
+describe("lab CLI: pick-replacement", () => {
+  it("prints one Brief, flagged like the one it replaces, avoiding every --exclude Brief", () => {
+    const dir = makeLabDir();
+    const exclude = [
+      { trigger: "hover", feel: "springy" },
+      { trigger: "hover", feel: "eerie" },
+      { trigger: "drag", feel: "springy" },
+    ];
+
+    const output = lab(
+      "pick-replacement",
+      ...["--lab", dir, "--date", "2026-10-30", "--wildcard"],
+      ...exclude.flatMap((brief) => ["--exclude", JSON.stringify(brief)]),
+    );
+
+    expect(output).toEqual({ brief: { trigger: "drag", feel: "eerie" }, wildcard: true });
+  });
+});
+
+describe("lab CLI: register", () => {
+  it("registers the Interaction with its poster and prints its id", () => {
+    const dir = makeLabDir();
+    const html = join(dir, "draft.html");
+    const poster = join(dir, "draft.png");
+    writeFileSync(html, HTML);
+    writeFileSync(poster, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+
+    const output = lab(
+      "register",
+      ...["--lab", dir, "--date", "2026-10-30", "--title", "Rubber card"],
+      ...["--brief", JSON.stringify(BRIEF), "--html", html, "--poster", poster],
+    );
+
+    expect(output).toEqual({ id: "2026-10-30-a" });
+    expect(openLab(dir).inbox()).toEqual([
+      { id: "2026-10-30-a", brief: BRIEF, wildcard: false, title: "Rubber card", date: "2026-10-30" },
+    ]);
+    expect(readFileSync(join(dir, "interactions", "2026-10-30-a", "poster.png"))).toEqual(readFileSync(poster));
   });
 });

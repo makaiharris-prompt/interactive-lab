@@ -2,8 +2,10 @@
  * The lab CLI: a thin adapter over the lab core, for the `generate-batch` skill and for humans.
  *
  *   npm run lab -- pick-briefs [--date YYYY-MM-DD] [--seed S]
+ *   npm run lab -- pick-replacement [--wildcard] --exclude '<json>' [--exclude '<json>' ...]
+ *                                   [--date YYYY-MM-DD] [--seed S]
  *   npm run lab -- register --brief '<json>' --title "..." --html path/to/index.html
- *                           [--wildcard] [--date YYYY-MM-DD]
+ *                           --poster path/to/poster.png [--wildcard] [--date YYYY-MM-DD]
  *   npm run lab -- taste-context [--date YYYY-MM-DD]
  *
  * Every command takes `--lab <dir>` (default: the current directory) and prints JSON.
@@ -14,7 +16,8 @@ import { openLab } from "./lab/index.ts";
 
 const USAGE = `Usage:
   lab pick-briefs [--date YYYY-MM-DD] [--seed S] [--lab DIR]
-  lab register --brief JSON --title TEXT --html FILE [--wildcard] [--date YYYY-MM-DD] [--lab DIR]
+  lab pick-replacement [--wildcard] [--exclude JSON ...] [--date YYYY-MM-DD] [--seed S] [--lab DIR]
+  lab register --brief JSON --title TEXT --html FILE --poster FILE [--wildcard] [--date YYYY-MM-DD] [--lab DIR]
   lab taste-context [--date YYYY-MM-DD] [--lab DIR]`;
 
 /** Printed with the Taste context so whoever reads the JSON knows what each part is for. */
@@ -42,20 +45,31 @@ function main(argv: string[]): unknown {
       date: { type: "string", default: today() },
       seed: { type: "string" },
       brief: { type: "string" },
+      exclude: { type: "string", multiple: true, default: [] },
       title: { type: "string" },
       html: { type: "string" },
+      poster: { type: "string" },
       wildcard: { type: "boolean", default: false },
     },
   });
   const lab = openLab(values.lab);
+  const seed = values.seed ?? String(Date.now());
 
   switch (command) {
     case "pick-briefs":
-      return lab.pickBriefs({ date: values.date, seed: values.seed ?? String(Date.now()) });
+      return lab.pickBriefs({ date: values.date, seed });
+
+    case "pick-replacement":
+      return lab.pickReplacement({
+        date: values.date,
+        seed,
+        wildcard: values.wildcard,
+        exclude: values.exclude.map((brief) => JSON.parse(brief)),
+      });
 
     case "register": {
-      if (!values.brief || !values.title || !values.html) {
-        throw new Error("register needs --brief, --title and --html");
+      if (!values.brief || !values.title || !values.html || !values.poster) {
+        throw new Error("register needs --brief, --title, --html and --poster");
       }
       return lab.registerInteraction({
         brief: JSON.parse(values.brief),
@@ -63,6 +77,7 @@ function main(argv: string[]): unknown {
         title: values.title,
         date: values.date,
         html: readFileSync(values.html, "utf8"),
+        poster: readFileSync(values.poster),
       });
     }
 
