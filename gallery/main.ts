@@ -16,6 +16,13 @@ function interactionUrl(id: string): string {
   return `/lab/interactions/${encodeURIComponent(id)}/index.html`;
 }
 
+const WILDCARD_EXPLANATION =
+  "Ignores your Weights and favors Axis values the lab has rarely tried.";
+
+function wildcardTag(): HTMLElement {
+  return el("span", { className: "wildcard", textContent: "Wildcard", title: WILDCARD_EXPLANATION });
+}
+
 function briefView(item: InboxItem): HTMLElement {
   return el(
     "dl",
@@ -56,9 +63,12 @@ function renderInbox(items: InboxItem[], focusedId?: string): void {
   const caption = el("section", { className: "caption" }, [
     el("div", { className: "caption-head" }, [
       el("h2", { textContent: focused.title }),
-      ...(focused.wildcard ? [el("span", { className: "wildcard", textContent: "Wildcard" })] : []),
+      ...(focused.wildcard ? [wildcardTag()] : []),
       el("span", { className: "date", textContent: focused.date }),
     ]),
+    ...(focused.wildcard
+      ? [el("p", { className: "wildcard-note", textContent: WILDCARD_EXPLANATION })]
+      : []),
     briefView(focused),
   ]);
 
@@ -67,12 +77,17 @@ function renderInbox(items: InboxItem[], focusedId?: string): void {
     { className: "queue" },
     items.map((item) =>
       el("li", {}, [
-        el("button", {
-          type: "button",
-          className: item.id === focused.id ? "is-focused" : "",
-          textContent: item.wildcard ? `${item.title} ✦` : item.title,
-          onclick: () => renderInbox(items, item.id),
-        }),
+        el(
+          "button",
+          {
+            type: "button",
+            className: [item.id === focused.id ? "is-focused" : "", item.wildcard ? "is-wildcard" : ""]
+              .filter(Boolean)
+              .join(" "),
+            onclick: () => renderInbox(items, item.id),
+          },
+          [item.title, ...(item.wildcard ? [wildcardTag()] : [])],
+        ),
       ]),
     ),
   );
