@@ -226,6 +226,52 @@ describe("record a Verdict", () => {
   });
 });
 
+describe("Kept collection", () => {
+  function register(lab: Lab, title: string, date: string): string {
+    return lab.registerInteraction({ brief: BRIEF, wildcard: title.includes("Wild"), title, date, html: HTML }).id;
+  }
+
+  it("lists every Kept Interaction with its Brief, Wildcard flag, title, date and Note, newest first", () => {
+    const lab = openLab(makeLabDir());
+    const older = register(lab, "Older keep", "2026-10-29");
+    const tossed = register(lab, "Tossed", "2026-10-29");
+    const unkept = register(lab, "Un-kept", "2026-10-30");
+    register(lab, "Still in the Inbox", "2026-10-30");
+    const newer = register(lab, "Wild keep", "2026-10-31");
+    lab.recordVerdict({ id: older, verdict: "keep" });
+    lab.recordVerdict({ id: tossed, verdict: "toss" });
+    lab.recordVerdict({ id: unkept, verdict: "keep" });
+    lab.recordVerdict({ id: unkept, verdict: "unkeep" });
+    lab.recordVerdict({ id: newer, verdict: "keep", note: "love the drift" });
+
+    expect(lab.kept()).toEqual([
+      { id: newer, brief: BRIEF, wildcard: true, title: "Wild keep", date: "2026-10-31", note: "love the drift" },
+      { id: older, brief: BRIEF, wildcard: false, title: "Older keep", date: "2026-10-29", note: null },
+    ]);
+  });
+
+  it("gives an Interaction's poster.png, saved into its folder by the Smoke check", () => {
+    const dir = makeLabDir();
+    const lab = openLab(dir);
+    const withPoster = register(lab, "With poster", "2026-10-30");
+    const withoutPoster = register(lab, "Without poster", "2026-10-30");
+    const png = Buffer.from("\x89PNG fake poster", "latin1");
+    writeFileSync(join(dir, "interactions", withPoster, "poster.png"), png);
+
+    expect(lab.interactionPoster(withPoster)).toEqual(png);
+    expect(lab.interactionPoster(withoutPoster)).toBeUndefined();
+    expect(lab.interactionPoster("2026-10-30-z")).toBeUndefined();
+    expect(lab.interactionPoster("../../etc")).toBeUndefined();
+  });
+
+  it("is empty in a lab with no Keeps", () => {
+    const lab = openLab(makeLabDir());
+    register(lab, "Still in the Inbox", "2026-10-30");
+
+    expect(lab.kept()).toEqual([]);
+  });
+});
+
 /** Register past Interactions, one per Brief, on consecutive days from `startDate`. */
 function registerHistory(lab: Lab, briefs: Brief[], startDate: string): void {
   briefs.forEach((brief, i) => {
