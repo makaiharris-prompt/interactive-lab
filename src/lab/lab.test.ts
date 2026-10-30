@@ -559,6 +559,33 @@ describe("Weights", () => {
     expect(Object.values(lab.weights().shape!)).toEqual(repeat(25, 0.5));
   });
 
+  it("reports, for Brief stats, each value's Weight and share and which values the floor holds up", () => {
+    const lab = openLab(makeLabDir("axes:\n  trigger: [hover, click, drag]\n"));
+    judgedHistory(lab, repeat(38, { brief: { trigger: "hover" }, verdict: "toss" as const }));
+
+    expect(lab.briefStats()).toEqual({
+      trigger: {
+        floorShare: 0.05,
+        values: {
+          // hover = 1/19 = 5% of 1/19 + 0.5 + 0.5; click and drag split the other 95%.
+          hover: { weight: expect.closeTo(1 / 19), share: expect.closeTo(0.05), atFloor: true },
+          click: { weight: 0.5, share: expect.closeTo(0.475), atFloor: false },
+          drag: { weight: 0.5, share: expect.closeTo(0.475), atFloor: false },
+        },
+      },
+    });
+  });
+
+  it("reports an even floor share, and no value held up by it, on an untried Axis with more than 20 values", () => {
+    const values = Array.from({ length: 25 }, (_, i) => `v${i}`);
+    const lab = openLab(makeLabDir(`axes:\n  shape: [${values.join(", ")}]\n`));
+
+    const { shape } = lab.briefStats();
+
+    expect(shape!.floorShare).toBeCloseTo(1 / 25);
+    expect(Object.values(shape!.values).filter((v) => v.atFloor)).toEqual([]);
+  });
+
   it("steers the non-Wildcard Briefs, and leaves the Wildcard alone", () => {
     const lab = openLab(makeLabDir(SMALL_RULES));
     const feels = ["springy", "snappy", "eerie"];

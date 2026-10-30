@@ -9,9 +9,9 @@ import { seededRandom } from "./random.ts";
 import { readRules } from "./rules.ts";
 import { briefKey, ordinaryBrief, unusedBrief, wildcardBrief } from "./sampling.ts";
 import { Storage } from "./storage.ts";
-import { computeWeights, type Weights } from "./weights.ts";
+import { computeBriefStats, computeWeights, type AxisStats, type BriefStats, type Weights } from "./weights.ts";
 
-export type { Weights };
+export type { AxisStats, BriefStats, Weights };
 
 /** One value per Axis, keyed by Axis name, e.g. `{ trigger: "drag", feel: "springy" }`. */
 export type Brief = Record<string, string>;
@@ -189,6 +189,11 @@ export interface Lab {
    */
   weights(): Weights;
   /**
+   * The Brief stats (ADR 0007): every Axis value's Weight, its share of its Axis's total (its
+   * chance of being picked for a non-Wildcard Brief), and whether the floor holds it up.
+   */
+  briefStats(): BriefStats;
+  /**
    * The Taste context for writing on `date`: the Briefs and Notes of the 10 most recent Keeps,
    * the Notes of the 10 most recent Tosses that have one, and the titles from the last 30 days.
    * Only each Interaction's latest Verdict counts (an un-kept Interaction is a Toss).
@@ -310,6 +315,10 @@ export function openLab(labDir: string): Lab {
 
     weights() {
       return computeWeights(readRules(labDir).axes, storage.all());
+    },
+
+    briefStats() {
+      return computeBriefStats(readRules(labDir).axes, storage.all());
     },
 
     tasteContext({ date }) {

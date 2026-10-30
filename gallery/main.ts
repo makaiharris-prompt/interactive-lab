@@ -1,4 +1,11 @@
-import type { InboxItem, InteractionSummary, KeptItem, Verdict, VerdictInput, Weights } from "../src/lab/index.ts";
+import type {
+  BriefStats,
+  InboxItem,
+  InteractionSummary,
+  KeptItem,
+  Verdict,
+  VerdictInput,
+} from "../src/lab/index.ts";
 
 const app = document.querySelector<HTMLElement>("#app")!;
 
@@ -443,31 +450,30 @@ async function unkeep(item: KeptItem): Promise<void> {
   closeKept();
 }
 
-/** A value whose share of its Axis is this close to the 5% floor is shown as held up by it. */
-const AT_FLOOR_SHARE = 0.0505;
-
 /**
  * Brief stats: the current Weight of every Axis value, so the user can see their taste
  * change and spot an Axis narrowing to a few values (ADR 0007). Bars are scaled to the
  * Axis's heaviest value; the percentage is the value's share of its Axis's total weight,
  * which is how likely the picker is to choose it for a non-Wildcard Brief.
  */
-function renderStats(weights: Weights): void {
-  const axes = Object.entries(weights).map(([axis, values]) => {
-    const total = Object.values(values).reduce((sum, w) => sum + w, 0);
-    const max = Math.max(...Object.values(values));
-    const rows = Object.entries(values).map(([value, weight]) => {
-      const share = weight / total;
+function percent(share: number): string {
+  return `${(share * 100).toFixed(0)}%`;
+}
+
+function renderStats(stats: BriefStats): void {
+  const axes = Object.entries(stats).map(([axis, { floorShare, values }]) => {
+    const max = Math.max(...Object.values(values).map(({ weight }) => weight));
+    const rows = Object.entries(values).map(([value, { weight, share, atFloor }]) => {
       const bar = el("span", { className: "bar" }, [el("span", { className: "bar-fill" })]);
       (bar.firstChild as HTMLElement).style.width = `${(weight / max) * 100}%`;
-      return el("li", { className: share <= AT_FLOOR_SHARE ? "is-at-floor" : "" }, [
+      return el("li", { className: atFloor ? "is-at-floor" : "" }, [
         el("span", { className: "value", textContent: value }),
         bar,
         el("span", { className: "weight", textContent: weight.toFixed(2), title: "Weight" }),
         el("span", {
           className: "share",
-          textContent: `${(share * 100).toFixed(0)}%`,
-          title: share <= AT_FLOOR_SHARE ? "Held at the 5% floor" : "Share of this Axis",
+          textContent: percent(share),
+          title: atFloor ? `Held at the ${percent(floorShare)} floor` : "Share of this Axis",
         }),
       ]);
     });
@@ -481,7 +487,8 @@ function renderStats(weights: Weights): void {
         className: "stats-intro",
         textContent:
           "Weights start at 0.50. Keeps raise them and Tosses lower them; the Inbox doesn't count. " +
-          "The percentage is each value's chance of being picked for a non-Wildcard Brief, never below 5%.",
+          "The percentage is each value's chance of being picked for a non-Wildcard Brief, never below " +
+          "its Axis's floor: 5%, or an even share on an Axis with more than 20 values.",
       }),
       ...axes,
     ]),
@@ -520,8 +527,8 @@ async function show(next: View): Promise<void> {
   }
   try {
     if (next === "stats") {
-      const weights = await loadJson<Weights>("/lab/weights.json");
-      if (view === "stats") renderStats(weights);
+      const stats = await loadJson<BriefStats>("/lab/brief-stats.json");
+      if (view === "stats") renderStats(stats);
     } else if (next === "kept") {
       const items = await loadJson<KeptItem[]>("/lab/kept.json");
       if (view === "kept") {
