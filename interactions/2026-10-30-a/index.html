@@ -1,0 +1,205 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keycap Rolodex</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #15131c; }
+  body { touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; width: 100%; height: 100%; }
+  .hint {
+    position: fixed; left: 0; right: 0; bottom: 18px; text-align: center;
+    font: 500 12px/1.4 ui-monospace, Menlo, monospace; letter-spacing: .14em;
+    color: #8f88a6; text-transform: uppercase; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div class="hint">scroll or swipe to roll · each notch clicks</div>
+<script type="module">
+import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+
+const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = makeBackdrop();
+const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
+camera.position.set(4.2, 1.6, 17);
+camera.lookAt(0, 0, 0);
+
+scene.add(new THREE.HemisphereLight(0xfff1e0, 0x2a2140, 1.4));
+const key = new THREE.DirectionalLight(0xffffff, 2.2);
+key.position.set(3, 5, 6);
+scene.add(key);
+const rim = new THREE.DirectionalLight(0x8c7bff, 1.6);
+rim.position.set(-5, -2, -3);
+scene.add(rim);
+
+const LABELS = ["ESC", "TAB", "ALT", "CTRL", "FN", "SHIFT", "ENTER", "SPACE", "DEL", "HOME", "END", "MENU"];
+const COLORS = [0xff5d73, 0xffb347, 0xffe066, 0x7ee081, 0x4fd1c5, 0x5aa9ff, 0x9b8cff, 0xe07bff, 0xff7eb6, 0xff9966, 0xc6f36b, 0x63e6ff];
+const N = LABELS.length;
+const RADIUS = 3.1;
+const STEP = (Math.PI * 2) / N;
+
+const drum = new THREE.Group();
+scene.add(drum);
+const capGeo = new RoundedBoxGeometry(2.8, 0.95, 0.8, 5, 0.2);
+const baseGeo = new RoundedBoxGeometry(3.1, 1.2, 0.5, 4, 0.16);
+const labelGeo = new THREE.PlaneGeometry(2.4, 0.6);
+const baseMat = new THREE.MeshStandardMaterial({ color: 0x2b2738, roughness: 0.6, metalness: 0.2 });
+
+const keys = LABELS.map((label, i) => {
+  const holder = new THREE.Group();
+  holder.rotation.x = -i * STEP;
+  const slot = new THREE.Group();
+  slot.position.z = RADIUS;
+  holder.add(slot);
+  const base = new THREE.Mesh(baseGeo, baseMat);
+  base.position.z = -0.35;
+  slot.add(base);
+  const mat = new THREE.MeshStandardMaterial({
+    color: COLORS[i], roughness: 0.38, metalness: 0.05,
+    emissive: COLORS[i], emissiveIntensity: 0,
+  });
+  const cap = new THREE.Mesh(capGeo, mat);
+  cap.position.z = 0.25;
+  const face = new THREE.Mesh(labelGeo, new THREE.MeshBasicMaterial({ map: labelTexture(label), transparent: true }));
+  face.position.z = 0.405;
+  cap.add(face);
+  slot.add(cap);
+  drum.add(holder);
+  return { cap, mat, press: 0, pressV: 0, lift: 0 };
+});
+
+function labelTexture(text) {
+  const c = document.createElement("canvas");
+  c.width = 512; c.height = 128;
+  const g = c.getContext("2d");
+  g.fillStyle = "rgba(20,16,32,0.82)";
+  g.font = "700 84px ui-monospace, Menlo, monospace";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.fillText(text, 256, 68);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  return t;
+}
+
+function makeBackdrop() {
+  const c = document.createElement("canvas");
+  c.width = 4; c.height = 256;
+  const g = c.getContext("2d");
+  const grad = g.createLinearGradient(0, 0, 0, 256);
+  grad.addColorStop(0, "#2a2140");
+  grad.addColorStop(0.55, "#17141f");
+  grad.addColorStop(1, "#0d0c12");
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 4, 256);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// Scroll state: `target` is an integer notch, `angle` springs toward it.
+let target = 0;
+let angle = 0;
+let angVel = 0;
+let wheelAcc = 0;
+let lastNotch = 0;
+
+function notch(dir) {
+  target += dir;
+}
+
+addEventListener("wheel", (e) => {
+  e.preventDefault();
+  wheelAcc += e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
+  while (Math.abs(wheelAcc) >= 60) {
+    const dir = Math.sign(wheelAcc);
+    notch(dir);
+    wheelAcc -= dir * 60;
+  }
+}, { passive: false });
+
+let dragY = null;
+addEventListener("pointerdown", (e) => { dragY = e.clientY; });
+addEventListener("pointermove", (e) => {
+  if (dragY === null) return;
+  const dy = dragY - e.clientY;
+  if (Math.abs(dy) > 46) {
+    notch(Math.sign(dy));
+    dragY = e.clientY;
+  }
+});
+const endDrag = () => { dragY = null; };
+addEventListener("pointerup", endDrag);
+addEventListener("pointercancel", endDrag);
+addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown" || e.key === "PageDown") notch(1);
+  if (e.key === "ArrowUp" || e.key === "PageUp") notch(-1);
+});
+
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  // keep the whole drum in view on narrow screens
+  const z = w / h < 1 ? 17 / Math.max(w / h, 0.55) : 17;
+  camera.position.set(4.2 * z / 17, 1.6, z);
+  camera.lookAt(0, 0, 0);
+  camera.updateProjectionMatrix();
+}
+addEventListener("resize", resize);
+resize();
+
+const clock = new THREE.Clock();
+function frame() {
+  const dt = Math.min(clock.getDelta(), 1 / 30);
+  const goal = target * STEP;
+
+  if (reduce.matches) {
+    angle = goal;
+    angVel = 0;
+  } else {
+    // stiff, slightly under-damped spring: fast arrival with a crisp overshoot
+    const k = 520, c = 30;
+    angVel += (-(angle - goal) * k - angVel * c) * dt;
+    angle += angVel * dt;
+  }
+  drum.rotation.x = angle;
+
+  const front = ((target % N) + N) % N;
+  if (target !== lastNotch) {
+    if (!reduce.matches) keys[front].pressV = -9;
+    lastNotch = target;
+  }
+
+  keys.forEach((k, i) => {
+    const active = i === front;
+    if (reduce.matches) {
+      k.press = 0;
+    } else {
+      k.pressV += (-k.press * 900 - k.pressV * 38) * dt;
+      k.press += k.pressV * dt;
+    }
+    k.lift += ((active ? 0.18 : 0) - k.lift) * Math.min(1, dt * 20);
+    k.cap.position.z = 0.25 + k.lift + k.press;
+    const glow = active ? 0.22 : 0;
+    k.mat.emissiveIntensity += (glow - k.mat.emissiveIntensity) * Math.min(1, dt * 18);
+  });
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+frame();
+</script>
+</body>
+</html>

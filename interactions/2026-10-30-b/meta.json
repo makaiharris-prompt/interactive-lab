@@ -1,0 +1,13 @@
+{
+  "brief": {
+    "trigger": "hover",
+    "subject": "image",
+    "technique": "verlet/spring physics",
+    "feel": "liquid"
+  },
+  "wildcard": false,
+  "title": "Disturb the Pond",
+  "date": "2026-10-30",
+  "verdict": null,
+  "note": null
+}
