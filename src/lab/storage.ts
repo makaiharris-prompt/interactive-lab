@@ -4,7 +4,7 @@
  *   interactions/2026-10-30-a/
  *     index.html   the Interaction
  *     meta.json    Brief, Wildcard flag, title, date, Verdict, Note
- *     poster.png   the Smoke check's thumbnail
+ *     poster.png   thumbnail, written by the Smoke check
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -51,6 +51,12 @@ export class Storage {
     if (!ID.test(id)) return undefined;
     const file = join(this.folder(id), "index.html");
     return existsSync(file) ? readFileSync(file, "utf8") : undefined;
+  }
+
+  readPoster(id: string): Buffer | undefined {
+    if (!ID.test(id)) return undefined;
+    const file = join(this.folder(id), "poster.png");
+    return existsSync(file) ? readFileSync(file) : undefined;
   }
 
   /** Delete an Interaction's HTML, leaving its metadata (a Toss, ADR 0006). */

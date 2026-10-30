@@ -57,6 +57,17 @@ export interface InboxItem {
   date: string;
 }
 
+/** An Interaction in the Kept collection: one with a Keep Verdict. */
+export interface KeptItem {
+  id: string;
+  brief: Brief;
+  wildcard: boolean;
+  title: string;
+  date: string;
+  /** The Note saved with the Keep, if any. */
+  note: string | null;
+}
+
 const VERDICTS = ["keep", "toss", "unkeep"] as const;
 
 export interface VerdictInput {
@@ -135,8 +146,12 @@ export interface Lab {
   registerInteraction(interaction: NewInteraction): { id: string };
   /** Interactions without a Verdict, oldest first. */
   inbox(): InboxItem[];
+  /** The Kept collection: every Interaction whose latest Verdict is a Keep, newest first. */
+  kept(): KeptItem[];
   /** An Interaction's HTML, or `undefined` if there is none (unknown id, or Tossed). */
   interactionHtml(id: string): string | undefined;
+  /** An Interaction's `poster.png` thumbnail (saved by the Smoke check), or `undefined` if there is none. */
+  interactionPoster(id: string): Buffer | undefined;
   /** Record a Verdict in the Interaction's metadata. It replaces any earlier Verdict. */
   recordVerdict(input: VerdictInput): void;
   /**
@@ -218,8 +233,22 @@ export function openLab(labDir: string): Lab {
       });
     },
 
+    kept() {
+      return storage
+        .ids()
+        .reverse()
+        .flatMap((id) => {
+          const { brief, wildcard, title, date, verdict, note } = storage.readMeta(id);
+          return verdict === "keep" ? [{ id, brief, wildcard, title, date, note }] : [];
+        });
+    },
+
     interactionHtml(id) {
       return storage.readHtml(id);
+    },
+
+    interactionPoster(id) {
+      return storage.readPoster(id);
     },
 
     recordVerdict({ id, verdict, note = null }) {
