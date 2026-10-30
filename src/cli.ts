@@ -30,9 +30,9 @@ const USAGE = `Usage:
 /** Printed with the Taste context so whoever reads the JSON knows what each part is for. */
 const TASTE_CONTEXT_ABOUT = {
   keeps:
-    "The 10 most recent Keeps, newest first: the Brief each was written from and the user's Note (null if none). Build in the spirit of what the Notes praise.",
+    "The 10 most recent Keeps, newest Verdict first: the Brief each was written from and the user's Note (null if none). Build in the spirit of what the Notes praise.",
   tossNotes:
-    "The Notes on the 10 most recent Tosses that have one (an un-kept Interaction counts as a Toss), newest first. Avoid what they criticise.",
+    "The Notes on the 10 most recent Tosses that have one (an un-kept Interaction counts as a Toss), newest Verdict first. Avoid what they criticise.",
   recentTitles:
     "Titles of every Interaction from the 30 days up to `date`, newest first. Don't repeat these ideas.",
 };

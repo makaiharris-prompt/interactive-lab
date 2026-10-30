@@ -102,9 +102,9 @@ export interface TasteKeep {
 
 /** The Taste context (ADR 0005): steers *how* Claude builds, and which ideas not to repeat. */
 export interface TasteContext {
-  /** At most 10 most recent Keeps, newest first. */
+  /** At most 10 most recent Keeps, newest Verdict first. */
   keeps: TasteKeep[];
-  /** At most 10 most recent Tosses that have a Note, newest first. Tosses without a Note are skipped. */
+  /** At most 10 most recent Tosses that have a Note, newest Verdict first. Tosses without a Note are skipped. */
   tossNotes: TasteTossNote[];
   /** Titles of every Interaction (any Verdict, or none) dated in the 30 days up to `date`, newest first. */
   recentTitles: string[];
@@ -167,8 +167,8 @@ export interface Lab {
    * The Taste context for writing on `date`: the Briefs and Notes of the 10 most recent Keeps,
    * the Notes of the 10 most recent Tosses that have one, and the titles from the last 30 days.
    * Only each Interaction's latest Verdict counts (an un-kept Interaction is a Toss).
-   * "Recent" means the Interaction's date (and position in its batch), newest first:
-   * Verdicts carry no timestamp of their own.
+   * Keeps and Tosses are ordered by when their Verdict was given, newest first; Verdicts
+   * recorded before the lab kept that time come last, newest Interaction first.
    */
   tasteContext(options: TasteContextOptions): TasteContext;
 }
@@ -267,7 +267,7 @@ export function openLab(labDir: string): Lab {
       const recorded = verdict === "keep" ? "keep" : "toss";
       const keptNote = verdict === "unkeep" && !note?.trim() ? meta.note : note;
       // Metadata first: if deleting the HTML fails, the Verdict is still on record.
-      storage.writeMeta(id, { ...meta, verdict: recorded, note: keptNote });
+      storage.writeMeta(id, { ...meta, verdict: recorded, note: keptNote, verdictAt: new Date().toISOString() });
       if (recorded === "toss") storage.deleteHtml(id);
     },
 
@@ -280,11 +280,15 @@ export function openLab(labDir: string): Lab {
         .ids()
         .reverse()
         .map((id) => ({ id, ...storage.readMeta(id) }));
-      const keeps = newestFirst
+      // Newest Verdict first; Verdicts recorded before they carried a time come after, newest Interaction first.
+      const newestVerdictFirst = newestFirst
+        .slice()
+        .sort((a, b) => (b.verdictAt ?? "").localeCompare(a.verdictAt ?? ""));
+      const keeps = newestVerdictFirst
         .filter((meta) => meta.verdict === "keep")
         .slice(0, TASTE_CONTEXT_SIZE)
         .map(({ id, title, brief, note }) => ({ id, title, brief, note }));
-      const tossNotes = newestFirst
+      const tossNotes = newestVerdictFirst
         .filter((meta) => meta.verdict === "toss" && meta.note?.trim())
         .slice(0, TASTE_CONTEXT_SIZE)
         .map(({ id, title, brief, note }) => ({ id, title, brief, note: note! }));

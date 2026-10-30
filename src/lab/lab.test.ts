@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { openLab, type Brief, type Lab } from "./index.ts";
 
 const RULES = `
@@ -26,6 +26,7 @@ function makeLabDir(rules = RULES): string {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -183,6 +184,7 @@ describe("record a Verdict", () => {
       date: "2026-10-30",
       verdict: "toss",
       note: "hate the color",
+      verdictAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/),
     });
     expect(lab.inbox()).toEqual([]);
   });
@@ -698,6 +700,49 @@ describe("Taste context", () => {
       expect.objectContaining({ id: unkeptSilently, note: "first thought" }),
       expect.objectContaining({ id: unkeptWithNote, note: "got old fast" }),
     ]);
+  });
+
+  it("orders Keeps and Tosses by when their Verdict was given, not by the Interaction's date", () => {
+    const dir = makeLabDir();
+    const lab = openLab(dir);
+    const [older, newer, olderTossed, newerTossed] = judged(
+      lab,
+      [{ verdict: null }, { verdict: null }, { verdict: null }, { verdict: null }],
+      "2026-10-01",
+    );
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // The newer Interactions get their Verdicts first; the older ones a day later.
+    vi.setSystemTime(new Date("2026-10-20T09:00:00Z"));
+    lab.recordVerdict({ id: newer!, verdict: "keep" });
+    lab.recordVerdict({ id: newerTossed!, verdict: "toss", note: "too busy" });
+    vi.setSystemTime(new Date("2026-10-21T09:00:00Z"));
+    lab.recordVerdict({ id: older!, verdict: "keep" });
+    lab.recordVerdict({ id: olderTossed!, verdict: "toss", note: "too slow" });
+
+    const { keeps, tossNotes } = lab.tasteContext({ date: "2026-10-30" });
+
+    expect(keeps.map((k) => k.id)).toEqual([older, newer]);
+    expect(tossNotes.map((t) => t.id)).toEqual([olderTossed, newerTossed]);
+  });
+
+  it("puts Verdicts recorded without a time after timed ones, in Interaction order", () => {
+    const dir = makeLabDir();
+    const lab = openLab(dir);
+    const [timed, untimedOld, untimedNew] = judged(
+      lab,
+      [{ verdict: "keep" }, { verdict: "keep" }, { verdict: "keep" }],
+      "2026-10-01",
+    );
+    // Metadata written before Verdicts carried a time.
+    for (const id of [untimedOld!, untimedNew!]) {
+      const file = join(dir, "interactions", id, "meta.json");
+      const { verdictAt: _, ...meta } = JSON.parse(readFileSync(file, "utf8"));
+      writeFileSync(file, JSON.stringify(meta));
+    }
+
+    const { keeps } = lab.tasteContext({ date: "2026-10-30" });
+
+    expect(keeps.map((k) => k.id)).toEqual([timed, untimedNew, untimedOld]);
   });
 
   it("is empty in a lab with no Interactions", () => {

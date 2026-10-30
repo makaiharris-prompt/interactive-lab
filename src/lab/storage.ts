@@ -3,7 +3,7 @@
  *
  *   interactions/2026-10-30-a/
  *     index.html   the Interaction
- *     meta.json    Brief, Wildcard flag, title, date, Verdict, Note
+ *     meta.json    Brief, Wildcard flag, title, date, Verdict, Note, when the Verdict was given
  *     poster.png   thumbnail, written by the Smoke check
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -17,6 +17,11 @@ export interface Meta {
   /** `null` while the Interaction is in the Inbox. */
   verdict: "keep" | "toss" | null;
   note: string | null;
+  /**
+   * When the Verdict was given, as an ISO 8601 timestamp. Missing while in the Inbox, and on
+   * Verdicts recorded before the lab kept this.
+   */
+  verdictAt?: string;
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
