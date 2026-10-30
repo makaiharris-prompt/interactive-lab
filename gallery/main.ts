@@ -16,6 +16,13 @@ function interactionUrl(id: string): string {
   return `/lab/interactions/${encodeURIComponent(id)}/index.html`;
 }
 
+const WILDCARD_EXPLANATION =
+  "Ignores your Weights and favors Axis values the lab has rarely tried.";
+
+function wildcardTag(): HTMLElement {
+  return el("span", { className: "wildcard", textContent: "Wildcard", title: WILDCARD_EXPLANATION });
+}
+
 function briefView(item: InboxItem): HTMLElement {
   return el(
     "dl",
@@ -90,9 +97,12 @@ function renderInbox(): void {
   const caption = el("section", { className: "caption" }, [
     el("div", { className: "caption-head" }, [
       el("h2", { textContent: item.title }),
-      ...(item.wildcard ? [el("span", { className: "wildcard", textContent: "Wildcard" })] : []),
+      ...(item.wildcard ? [wildcardTag()] : []),
       el("span", { className: "date", textContent: item.date }),
     ]),
+    ...(item.wildcard
+      ? [el("p", { className: "wildcard-note", textContent: WILDCARD_EXPLANATION })]
+      : []),
     briefView(item),
   ]);
 
@@ -134,12 +144,17 @@ function renderInbox(): void {
     { className: "queue" },
     inbox.items.map((other) =>
       el("li", {}, [
-        el("button", {
-          type: "button",
-          className: other.id === item.id ? "is-focused" : "",
-          textContent: other.wildcard ? `${other.title} ✦` : other.title,
-          onclick: () => focusOn(other.id),
-        }),
+        el(
+          "button",
+          {
+            type: "button",
+            className: [other.id === item.id ? "is-focused" : "", other.wildcard ? "is-wildcard" : ""]
+              .filter(Boolean)
+              .join(" "),
+            onclick: () => focusOn(other.id),
+          },
+          [other.title, ...(other.wildcard ? [wildcardTag()] : [])],
+        ),
       ]),
     ),
   );

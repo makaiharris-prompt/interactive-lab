@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { openLab } from "./index.ts";
+import { openLab, type Brief, type Lab } from "./index.ts";
 
 const RULES = `
 axes:
@@ -223,5 +223,97 @@ describe("record a Verdict", () => {
     expect(() => lab.recordVerdict({ id, verdict })).toThrow(/verdict/i);
     expect(meta()).toMatchObject({ verdict: null });
     expect(existsSync(htmlFile)).toBe(true);
+  });
+});
+
+/** Register past Interactions, one per Brief, on consecutive days from `startDate`. */
+function registerHistory(lab: Lab, briefs: Brief[], startDate: string): void {
+  briefs.forEach((brief, i) => {
+    lab.registerInteraction({
+      brief,
+      wildcard: false,
+      title: `Past ${i}`,
+      date: addDays(startDate, i),
+      html: HTML,
+    });
+  });
+}
+
+function addDays(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+describe("Wildcard", () => {
+  it("favors Axis values with few past Briefs", () => {
+    const lab = openLab(makeLabDir());
+    // hover and click were each tried 10 times; drag never.
+    const past = Array.from({ length: 20 }, (_, i) => ({ ...BRIEF, trigger: i % 2 ? "hover" : "click" }));
+    registerHistory(lab, past, "2026-01-01");
+
+    const wildcardTriggers = Array.from(
+      { length: 30 },
+      (_, seed) => lab.pickBriefs({ date: "2026-10-30", seed }).find((p) => p.wildcard)!.brief.trigger,
+    );
+
+    // Uniform sampling would pick drag about 10 times out of 30.
+    expect(wildcardTriggers.filter((t) => t === "drag").length).toBeGreaterThanOrEqual(20);
+  });
+});
+
+const SMALL_RULES = `
+axes:
+  trigger: [hover, click, drag]
+  feel: [springy, snappy, eerie]
+`;
+
+describe("repeat avoidance", () => {
+  it("never picks a Brief identical to one from the last 30 days, nor the same Brief twice", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    // 6 of the 9 possible Briefs were used in the 29 days before the batch.
+    registerHistory(
+      lab,
+      [
+        { trigger: "hover", feel: "springy" },
+        { trigger: "hover", feel: "snappy" },
+        { trigger: "hover", feel: "eerie" },
+        { trigger: "click", feel: "springy" },
+        { trigger: "click", feel: "snappy" },
+        { trigger: "drag", feel: "eerie" },
+      ],
+      "2026-10-01",
+    );
+
+    for (let seed = 0; seed < 20; seed++) {
+      const picked = lab.pickBriefs({ date: "2026-10-30", seed });
+
+      expect(picked.map((p) => `${p.brief.trigger} · ${p.brief.feel}`).sort()).toEqual([
+        "click · eerie",
+        "drag · snappy",
+        "drag · springy",
+      ]);
+      expect(picked.filter((p) => p.wildcard)).toHaveLength(1);
+    }
+  });
+
+  it("can reuse a Brief once it is 30 days old", () => {
+    const lab = openLab(makeLabDir("axes:\n  trigger: [hover, click, drag]\n"));
+    for (const trigger of ["hover", "click", "drag"]) {
+      lab.registerInteraction({ brief: { trigger }, wildcard: false, title: trigger, date: "2026-09-30", html: HTML });
+    }
+
+    const picked = lab.pickBriefs({ date: "2026-10-30", seed: 1 });
+
+    expect(picked.map((p) => p.brief.trigger).sort()).toEqual(["click", "drag", "hover"]);
+  });
+
+  it("says so when every possible Brief was used in the last 30 days", () => {
+    const lab = openLab(makeLabDir("axes:\n  trigger: [hover, click, drag]\n"));
+    for (const trigger of ["hover", "click", "drag"]) {
+      lab.registerInteraction({ brief: { trigger }, wildcard: false, title: trigger, date: "2026-10-01", html: HTML });
+    }
+
+    expect(() => lab.pickBriefs({ date: "2026-10-30", seed: 1 })).toThrow(/30 days/);
   });
 });
