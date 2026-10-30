@@ -1,0 +1,15 @@
+{
+  "brief": {
+    "trigger": "hover",
+    "subject": "image",
+    "technique": "canvas 2D",
+    "feel": "floaty",
+    "look": "duotone",
+    "inspiration": "Text Pressure (letters that swell near the cursor)"
+  },
+  "wildcard": false,
+  "title": "Swelling Horizon",
+  "date": "2026-10-30",
+  "verdict": null,
+  "note": null
+}

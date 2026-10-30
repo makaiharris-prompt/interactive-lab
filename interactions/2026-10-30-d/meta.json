@@ -1,0 +1,15 @@
+{
+  "brief": {
+    "trigger": "idle (motion study)",
+    "subject": "button",
+    "technique": "SDF",
+    "feel": "tactile",
+    "look": "grain and dither",
+    "inspiration": "Magnet (elements pulled toward the cursor)"
+  },
+  "wildcard": true,
+  "title": "Lodestone Press",
+  "date": "2026-10-30",
+  "verdict": null,
+  "note": null
+}
