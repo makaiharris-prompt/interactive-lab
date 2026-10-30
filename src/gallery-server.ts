@@ -2,8 +2,10 @@
  * The Gallery's dev-server side: a Vite plugin that is a thin adapter over the lab core.
  *
  *   GET  /lab/inbox.json                   → the Inbox
+ *   GET  /lab/kept.json                    → the Kept collection, newest first
  *   GET  /lab/weights.json                 → the current Weights, for Brief stats
  *   GET  /lab/interactions/<id>/index.html → an Interaction, served by the shared interaction server
+ *   GET  /lab/interactions/<id>/poster.png → its thumbnail, likewise
  *   GET  /lab/vendor/<library>/<file>      → allow-listed vendored libraries (see interaction-server.ts)
  *   POST /lab/verdicts                     → Record a Verdict; body `{ id, verdict, note? }`
  */
@@ -70,6 +72,11 @@ export function labGallery(labDir: string, vendorDir?: string): Plugin {
 
         if (path === "/lab/inbox.json") {
           sendJson(res, 200, lab.inbox());
+          return;
+        }
+
+        if (path === "/lab/kept.json") {
+          sendJson(res, 200, lab.kept());
           return;
         }
 
