@@ -16,6 +16,11 @@ function interactionUrl(id: string): string {
   return `/lab/interactions/${encodeURIComponent(id)}/index.html`;
 }
 
+/** The Interaction's HTML exactly as stored: without the import map the served page gets. */
+function sourceUrl(id: string): string {
+  return `/lab/interactions/${encodeURIComponent(id)}/source.html`;
+}
+
 const WILDCARD_EXPLANATION =
   "Ignores your Weights and favors Axis values the lab has rarely tried.";
 
@@ -241,7 +246,7 @@ async function judge(verdict: VerdictInput["verdict"]): Promise<void> {
 
 async function copySource(item: InboxItem | KeptItem): Promise<void> {
   try {
-    const response = await fetch(interactionUrl(item.id));
+    const response = await fetch(sourceUrl(item.id));
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
     await navigator.clipboard.writeText(await response.text());
     setStatus(`Copied the source of “${item.title}”`);

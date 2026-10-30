@@ -5,6 +5,7 @@
  *   GET  /lab/kept.json                    → the Kept collection, newest first
  *   GET  /lab/weights.json                 → the current Weights, for Brief stats
  *   GET  /lab/interactions/<id>/index.html → an Interaction, served by the shared interaction server
+ *   GET  /lab/interactions/<id>/source.html → its stored HTML, unaltered, for Copy source
  *   GET  /lab/interactions/<id>/poster.png → its thumbnail, likewise
  *   GET  /lab/vendor/<library>/<file>      → allow-listed vendored libraries (see interaction-server.ts)
  *   POST /lab/verdicts                     → Record a Verdict; body `{ id, verdict, note? }`

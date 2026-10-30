@@ -87,6 +87,21 @@ describe("interaction server", () => {
     });
   });
 
+  it("serves an Interaction's stored HTML unaltered, without the import map, for Copy source", async () => {
+    const { labDir, id } = makeLab(["three"]);
+    const vendorDir = makeVendor({ "three/index.js": "" });
+    const server = await start({ labDir, vendorDir });
+
+    const res = await fetch(`${server.url}/lab/interactions/${id}/source.html`);
+    const missing = await fetch(`${server.url}/lab/interactions/2026-10-30-z/source.html`);
+
+    expect(res.status).toBe(200);
+    // Plain text, so a browser shows the source rather than running it.
+    expect(res.headers.get("content-type")).toMatch(/^text\/plain/);
+    expect(await res.text()).toBe(SAMPLE_HTML);
+    expect(missing.status).toBe(404);
+  });
+
   it("serves an Interaction's poster.png, for the Kept collection's thumbnails", async () => {
     const { labDir, id } = makeLab(["three"]);
     const vendorDir = makeVendor({ "three/index.js": "" });
