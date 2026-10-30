@@ -2,9 +2,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse } from "yaml";
 
+/** Axis name → its values, in file order. */
+export type Axes = Record<string, string[]>;
+
 export interface Rules {
-  /** Axis name → its values, in file order. */
-  axes: Record<string, string[]>;
+  axes: Axes;
   hardConstraints: string[];
   libraries: string[];
 }
@@ -13,7 +15,7 @@ export function readRules(labDir: string): Rules {
   const file = join(labDir, "rules.yaml");
   const raw = parse(readFileSync(file, "utf8")) ?? {};
 
-  const axes: Record<string, string[]> = {};
+  const axes: Axes = {};
   for (const [name, values] of Object.entries(raw.axes ?? {})) {
     if (!Array.isArray(values) || values.length === 0) {
       throw new Error(`${file}: Axis "${name}" needs a non-empty list of values`);

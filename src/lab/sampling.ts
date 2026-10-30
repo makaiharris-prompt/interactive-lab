@@ -9,10 +9,8 @@
  */
 import type { Brief } from "./index.ts";
 import { pickOne, pickWeighted, type Random } from "./random.ts";
+import type { Axes } from "./rules.ts";
 import type { Weights } from "./weights.ts";
-
-/** Axis name → its values. */
-export type Axes = Record<string, string[]>;
 
 export function ordinaryBrief(axes: Axes, weights: Weights, random: Random): Brief {
   const brief: Brief = {};

@@ -2,7 +2,7 @@
  * Weight math (ADR 0005). For each Axis value: `(keeps + 1) / (keeps + tosses + 2)`, then
  * a floor so no value falls below 5% of its Axis's total weight.
  */
-import type { Axes } from "./sampling.ts";
+import type { Axes } from "./rules.ts";
 import type { Meta } from "./storage.ts";
 
 /** Axis name → Axis value → its current Weight, both in rules-file order. */
