@@ -7,18 +7,25 @@
  *   npm run lab -- register --brief '<json>' --title "..." --html path/to/index.html
  *                           --poster path/to/poster.png [--wildcard] [--date YYYY-MM-DD]
  *   npm run lab -- taste-context [--date YYYY-MM-DD]
+ *   npm run lab -- commit-verdicts
+ *   npm run lab -- commit-batch --id ID [--id ID ...] [--date YYYY-MM-DD]
  *
  * Every command takes `--lab <dir>` (default: the current directory) and prints JSON.
+ * The commit commands expect the lab directory to be the root of its git repo; they commit
+ * only their own files and never push.
  */
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { openLab } from "./lab/index.ts";
+import { commitBatch, commitVerdicts } from "./lab-commits.ts";
 
 const USAGE = `Usage:
   lab pick-briefs [--date YYYY-MM-DD] [--seed S] [--lab DIR]
   lab pick-replacement [--wildcard] [--exclude JSON ...] [--date YYYY-MM-DD] [--seed S] [--lab DIR]
   lab register --brief JSON --title TEXT --html FILE --poster FILE [--wildcard] [--date YYYY-MM-DD] [--lab DIR]
-  lab taste-context [--date YYYY-MM-DD] [--lab DIR]`;
+  lab taste-context [--date YYYY-MM-DD] [--lab DIR]
+  lab commit-verdicts [--lab DIR]
+  lab commit-batch --id ID [--id ID ...] [--date YYYY-MM-DD] [--lab DIR]`;
 
 /** Printed with the Taste context so whoever reads the JSON knows what each part is for. */
 const TASTE_CONTEXT_ABOUT = {
@@ -50,6 +57,7 @@ function main(argv: string[]): unknown {
       html: { type: "string" },
       poster: { type: "string" },
       wildcard: { type: "boolean", default: false },
+      id: { type: "string", multiple: true, default: [] },
     },
   });
   const lab = openLab(values.lab);
@@ -80,6 +88,12 @@ function main(argv: string[]): unknown {
         poster: readFileSync(values.poster),
       });
     }
+
+    case "commit-verdicts":
+      return commitVerdicts(values.lab);
+
+    case "commit-batch":
+      return commitBatch(values.lab, values.date, values.id);
 
     case "taste-context":
       return { date: values.date, about: TASTE_CONTEXT_ABOUT, ...lab.tasteContext({ date: values.date }) };
