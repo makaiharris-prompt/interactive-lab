@@ -17,6 +17,18 @@ import { openLab, VerdictError, type Lab, type VerdictAction } from "./lab/index
 
 const MAX_BODY_BYTES = 64 * 1024;
 
+/** A request the server can't read (too large, not JSON), as opposed to a Verdict the lab refuses. */
+class RequestError extends Error {
+  override name = "RequestError";
+  /** The HTTP status to answer with. */
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json");
@@ -28,12 +40,12 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
   let body = "";
   for await (const chunk of req) {
     body += chunk;
-    if (body.length > MAX_BODY_BYTES) throw new VerdictError("Request body too large");
+    if (body.length > MAX_BODY_BYTES) throw new RequestError(413, "Request body too large");
   }
   try {
     return JSON.parse(body);
   } catch {
-    throw new VerdictError("Request body must be JSON");
+    throw new RequestError(400, "Request body must be JSON");
   }
 }
 
@@ -55,8 +67,9 @@ async function postVerdict(lab: Lab, req: IncomingMessage, res: ServerResponse):
     lab.recordVerdict({ id: String(id), action: action as VerdictAction, note: note as string | null });
     sendJson(res, 200, { ok: true });
   } catch (error) {
-    if (!(error instanceof VerdictError)) throw error;
-    sendJson(res, 400, { error: error.message });
+    if (error instanceof RequestError) sendJson(res, error.status, { error: error.message });
+    else if (error instanceof VerdictError) sendJson(res, 400, { error: error.message });
+    else throw error;
   }
 }
 
