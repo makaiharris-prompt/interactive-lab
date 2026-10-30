@@ -31,6 +31,12 @@ axes:
     - flow field
     - particle system
     - DOM + CSS only
+    - reaction-diffusion
+    - metaballs / surface tension
+    - curl-noise fluid
+    - Bézier / SVG path
+    - cellular automaton
+    - lens distortion
   feel:
     - springy
     - snappy
@@ -40,15 +46,24 @@ axes:
     - glitchy
     - tactile
     - eerie
-  look:
-    - monochrome
-    - duotone
-    - single accent on near-black
-    - soft gradient glow
-    - grain and dither
-    - frosted glass
-    - fine line / wireframe
-    - type-led
+  # The mark everything is drawn with: shape and depth come from mark density.
+  marks:
+    - dot-matrix
+    - halftone
+    - stipple particles
+    - isolines
+    - monospace text
+    - hairline vector
+  # What the user does to the material, and how it answers.
+  verb:
+    - pull
+    - fling
+    - stir
+    - erase and heal
+    - tilt
+    - reveal with light
+    - magnify
+    - scrub
   # A React Bits component (reactbits.dev) to riff on: its core mechanic is the
   # starting point, and the other Axes reshape it into something new. The full
   # catalogue has ~200; swap any in. Keep it to 20 or fewer values, or the 5%
@@ -79,25 +94,39 @@ axes:
 # as written. Unlike Hard constraints, these are taste, not pass/fail rules.
 styleGuide:
   - >-
-    Minimal and modern: one idea, done with restraint and polish. Lots of empty
-    space, few elements, nothing decorative that the idea doesn't need.
+    Specimen plates: each Interaction is one small living simulation, presented
+    like a plate in a scientific notebook. A material governed by real maths,
+    drawn in tiny monochrome marks, labelled like an instrument reading.
   - >-
-    Dark by default (near-black, not pure #000), with a tight palette: one or two
-    colours plus greys. Colour comes from light, glow and gradient rather than
-    flat fills.
+    Plate framing, every time, in small lowercase monospace (ui-monospace,
+    Menlo) with "·" as the separator. Top left, a bracketed uppercase label
+    naming the specimen, e.g. "[ MERCURY ]". Top right, a terse verb hint,
+    e.g. "hover to pull · grab and fling". Bottom left, the governing equation
+    of the simulation actually running, e.g. "∂v/∂t = Dv·∇²v + u·v² − (F + k)·v".
+    Bottom right, live readouts that change as the user acts, e.g.
+    "erased 259 · regrown 179 · step 2 816". Lots of empty space around the
+    specimen.
   - >-
-    Clean sans-serif type (system-ui or Inter-like), small and well spaced. No
-    emoji, no clip-art icons, no rainbow palettes, no busy UI chrome.
+    Draw with marks, never fills: dot-matrix, halftone, stipple, isolines,
+    monospace text or hairline strokes (the marks Axis). Shape and depth come
+    from mark density. No gradients-as-decoration, glow, glass, shadows or
+    rounded UI chrome.
   - >-
-    Motion is the material: smooth easing, springs and physics that feel
-    considered. Subtle beats loud; texture (grain, dither, soft noise) beats
-    clutter.
+    Palette: warm charcoal near-black (about #111110), marks in off-white and
+    greys (about #d8d6d0 and dimmer), and exactly one accent, a cobalt blue
+    (about #3d6bff). The blue only marks what is live: where the pointer
+    touches, the active line, the bracket labels. No other colours, no emoji,
+    no icons.
   - >-
-    Each Brief names a React Bits component to riff on (the inspiration Axis).
-    Take its core mechanic as the seed and push it somewhere new through the
-    other Axes. The result should feel like a sibling of that component, not a
-    copy: different subject, a twist on the mechanic, its own idea. Match
-    React Bits' level of craft.
+    Real simulation, not an effect: reaction-diffusion, metaballs, fluid,
+    springs, Bézier paths, cellular automata, lenses. The user acts on it like
+    a physical material (the verb Axis) and it answers with weight, and
+    ideally recovers afterwards: heals, settles, regrows. Text and code can be
+    the material too.
+  - >-
+    Each Brief also names a React Bits component to riff on (the inspiration
+    Axis). Take its core mechanic as the seed and render it as a specimen
+    plate: a sibling of that component in this style, never a copy of it.
 
 # Hard constraints: prose rules every Interaction must follow, passed to Claude as written.
 hardConstraints:
