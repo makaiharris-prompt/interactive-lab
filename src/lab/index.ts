@@ -44,6 +44,22 @@ export interface InboxItem {
   date: string;
 }
 
+const VERDICTS = ["keep", "toss", "unkeep"] as const;
+
+export interface VerdictInput {
+  /** The Interaction being judged. */
+  id: string;
+  /** `unkeep` turns an earlier Keep into a Toss. */
+  verdict: (typeof VERDICTS)[number];
+  /** An optional free-text Note, saved with the Verdict. */
+  note?: string | null;
+}
+
+/** A Verdict the lab refuses to record (unknown Interaction, or not allowed in its current state). */
+export class VerdictError extends Error {
+  override name = "VerdictError";
+}
+
 export const BATCH_SIZE = 3;
 
 export interface Lab {
@@ -55,6 +71,8 @@ export interface Lab {
   inbox(): InboxItem[];
   /** An Interaction's HTML, or `undefined` if there is none (unknown id, or Tossed). */
   interactionHtml(id: string): string | undefined;
+  /** Record a Verdict in the Interaction's metadata. It replaces any earlier Verdict. */
+  recordVerdict(input: VerdictInput): void;
 }
 
 export function openLab(labDir: string): Lab {
@@ -87,6 +105,22 @@ export function openLab(labDir: string): Lab {
 
     interactionHtml(id) {
       return storage.readHtml(id);
+    },
+
+    recordVerdict({ id, verdict, note = null }) {
+      if (!VERDICTS.includes(verdict)) throw new VerdictError(`Unknown Verdict "${verdict}"`);
+      if (note !== null && typeof note !== "string") throw new VerdictError("A Note must be text");
+      if (!storage.has(id)) throw new VerdictError(`No Interaction "${id}"`);
+      const meta = storage.readMeta(id);
+      // A Toss is final: its HTML is gone (ADR 0006).
+      if (meta.verdict === "toss") throw new VerdictError(`${id} is already tossed`);
+      if (verdict === "unkeep" && meta.verdict !== "keep") {
+        throw new VerdictError(`Can't un-keep ${id}: it is not kept`);
+      }
+      const recorded = verdict === "keep" ? "keep" : "toss";
+      // Metadata first: if deleting the HTML fails, the Verdict is still on record.
+      storage.writeMeta(id, { ...meta, verdict: recorded, note });
+      if (recorded === "toss") storage.deleteHtml(id);
     },
   };
 }

@@ -5,7 +5,7 @@
  *     index.html   the Interaction
  *     meta.json    Brief, Wildcard flag, title, date, Verdict, Note
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface Meta {
@@ -37,6 +37,11 @@ export class Storage {
       .sort();
   }
 
+  /** Whether `id` names a stored Interaction (with or without its HTML). */
+  has(id: string): boolean {
+    return ID.test(id) && existsSync(join(this.folder(id), "meta.json"));
+  }
+
   readMeta(id: string): Meta {
     return JSON.parse(readFileSync(join(this.folder(id), "meta.json"), "utf8"));
   }
@@ -45,6 +50,15 @@ export class Storage {
     if (!ID.test(id)) return undefined;
     const file = join(this.folder(id), "index.html");
     return existsSync(file) ? readFileSync(file, "utf8") : undefined;
+  }
+
+  /** Delete an Interaction's HTML, leaving its metadata (a Toss, ADR 0006). */
+  deleteHtml(id: string): void {
+    rmSync(join(this.folder(id), "index.html"), { force: true });
+  }
+
+  writeMeta(id: string, meta: Meta): void {
+    writeFileSync(join(this.folder(id), "meta.json"), `${JSON.stringify(meta, null, 2)}\n`);
   }
 
   /** Create the next folder for `date` (a, b, c, …) and write the Interaction into it. */
@@ -57,7 +71,7 @@ export class Storage {
     const id = `${meta.date}-${position}`;
     mkdirSync(this.folder(id), { recursive: true });
     writeFileSync(join(this.folder(id), "index.html"), html);
-    writeFileSync(join(this.folder(id), "meta.json"), `${JSON.stringify(meta, null, 2)}\n`);
+    this.writeMeta(id, meta);
     return id;
   }
 

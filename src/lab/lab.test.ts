@@ -125,3 +125,103 @@ describe("register Interaction", () => {
     expect(openLab(makeLabDir()).inbox()).toEqual([]);
   });
 });
+
+describe("record a Verdict", () => {
+  function labWithOne() {
+    const dir = makeLabDir();
+    const lab = openLab(dir);
+    const { id } = lab.registerInteraction({
+      brief: BRIEF,
+      wildcard: false,
+      title: "Springy card",
+      date: "2026-10-30",
+      html: HTML,
+    });
+    // meta.json is the documented, git-tracked record of a Verdict (ADR 0006).
+    const meta = () => JSON.parse(readFileSync(join(dir, "interactions", id, "meta.json"), "utf8"));
+    const htmlFile = join(dir, "interactions", id, "index.html");
+    return { lab, id, meta, htmlFile };
+  }
+
+  it("saves a Keep and its Note to the metadata and takes the Interaction out of the Inbox", () => {
+    const { lab, id, meta } = labWithOne();
+
+    lab.recordVerdict({ id, verdict: "keep", note: "love the easing" });
+
+    expect(meta()).toMatchObject({ verdict: "keep", note: "love the easing", title: "Springy card" });
+    expect(lab.inbox()).toEqual([]);
+    expect(lab.interactionHtml(id)).toBe(HTML);
+  });
+
+  it("deletes the HTML on a Toss and keeps the metadata", () => {
+    const { lab, id, meta, htmlFile } = labWithOne();
+
+    lab.recordVerdict({ id, verdict: "toss", note: "hate the color" });
+
+    expect(existsSync(htmlFile)).toBe(false);
+    expect(lab.interactionHtml(id)).toBeUndefined();
+    expect(meta()).toEqual({
+      brief: BRIEF,
+      wildcard: false,
+      title: "Springy card",
+      date: "2026-10-30",
+      verdict: "toss",
+      note: "hate the color",
+    });
+    expect(lab.inbox()).toEqual([]);
+  });
+
+  it("turns a Keep into a Toss on un-keep, deleting the HTML", () => {
+    const { lab, id, meta, htmlFile } = labWithOne();
+    lab.recordVerdict({ id, verdict: "keep", note: "love the easing" });
+
+    lab.recordVerdict({ id, verdict: "unkeep", note: "got old fast" });
+
+    expect(meta()).toMatchObject({ verdict: "toss", note: "got old fast" });
+    expect(existsSync(htmlFile)).toBe(false);
+  });
+
+  it("refuses to un-keep an Interaction that isn't kept", () => {
+    const { lab, id, meta, htmlFile } = labWithOne();
+
+    expect(() => lab.recordVerdict({ id, verdict: "unkeep" })).toThrow(/not kept/i);
+    expect(meta()).toMatchObject({ verdict: null });
+    expect(existsSync(htmlFile)).toBe(true);
+  });
+
+  it("counts only the latest Verdict, Note included", () => {
+    const { lab, id, meta } = labWithOne();
+    lab.recordVerdict({ id, verdict: "keep", note: "love the easing" });
+
+    lab.recordVerdict({ id, verdict: "keep", note: "the easing, and the color too" });
+    expect(meta()).toMatchObject({ verdict: "keep", note: "the easing, and the color too" });
+
+    lab.recordVerdict({ id, verdict: "keep" });
+    expect(meta()).toMatchObject({ verdict: "keep", note: null });
+  });
+
+  it("treats a Toss as final", () => {
+    const { lab, id, meta } = labWithOne();
+    lab.recordVerdict({ id, verdict: "toss", note: "hate the color" });
+
+    expect(() => lab.recordVerdict({ id, verdict: "keep" })).toThrow(/tossed/i);
+    expect(meta()).toMatchObject({ verdict: "toss", note: "hate the color" });
+  });
+
+  it("refuses a Verdict for an unknown Interaction", () => {
+    const lab = openLab(makeLabDir());
+
+    expect(() => lab.recordVerdict({ id: "2026-10-30-z", verdict: "keep" })).toThrow(/no interaction/i);
+    expect(() => lab.recordVerdict({ id: "../../etc", verdict: "keep" })).toThrow(/no interaction/i);
+  });
+
+  it("refuses anything but keep, toss or unkeep, and leaves the Interaction alone", () => {
+    const { lab, id, meta, htmlFile } = labWithOne();
+
+    // Verdicts arrive as JSON from the Gallery, so the type alone doesn't guard this.
+    const verdict = "maybe" as "keep";
+    expect(() => lab.recordVerdict({ id, verdict })).toThrow(/verdict/i);
+    expect(meta()).toMatchObject({ verdict: null });
+    expect(existsSync(htmlFile)).toBe(true);
+  });
+});
