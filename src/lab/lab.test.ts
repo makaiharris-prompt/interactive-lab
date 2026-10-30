@@ -491,3 +491,116 @@ describe("Weights", () => {
     });
   });
 });
+
+describe("Taste context", () => {
+  type Judgement = { verdict: "keep" | "toss" | "unkeep" | null; note?: string | null };
+
+  /** Register one Interaction per day from `startDate`, give the i-th one `judgements[i]`, return the ids. */
+  function judged(lab: Lab, judgements: Judgement[], startDate: string): string[] {
+    return judgements.map(({ verdict, note = null }, i) => {
+      const { id } = lab.registerInteraction({
+        brief: { ...BRIEF, feel: `feel ${i}` },
+        wildcard: false,
+        title: `Interaction ${i}`,
+        date: addDays(startDate, i),
+        html: HTML,
+      });
+      if (verdict === "unkeep") lab.recordVerdict({ id, verdict: "keep", note: "first thought" });
+      if (verdict) lab.recordVerdict({ id, verdict, note });
+      return id;
+    });
+  }
+
+  it("returns the Briefs and Notes of at most the 10 most recent Keeps, newest first", () => {
+    const lab = openLab(makeLabDir());
+    judged(
+      lab,
+      Array.from({ length: 12 }, (_, i) => ({ verdict: "keep" as const, note: i % 2 ? `note ${i}` : null })),
+      "2026-10-01",
+    );
+
+    const { keeps } = lab.tasteContext({ date: "2026-10-30" });
+
+    expect(keeps).toHaveLength(10);
+    expect(keeps[0]).toEqual({
+      id: "2026-10-12-a",
+      title: "Interaction 11",
+      brief: { ...BRIEF, feel: "feel 11" },
+      note: "note 11",
+    });
+    expect(keeps[1]).toMatchObject({ id: "2026-10-11-a", note: null });
+    expect(keeps.at(-1)).toMatchObject({ id: "2026-10-03-a", title: "Interaction 2" });
+  });
+
+  it("returns the Notes of at most the 10 most recent Tosses that have a Note, skipping the rest", () => {
+    const lab = openLab(makeLabDir());
+    // 12 Tosses with a Note, and the newest 3 Tosses have no Note (empty or blank counts as none).
+    judged(
+      lab,
+      [
+        ...Array.from({ length: 12 }, (_, i) => ({ verdict: "toss" as const, note: `note ${i}` })),
+        { verdict: "toss", note: null },
+        { verdict: "toss", note: "" },
+        { verdict: "toss", note: "   " },
+      ],
+      "2026-10-01",
+    );
+
+    const { tossNotes } = lab.tasteContext({ date: "2026-10-30" });
+
+    expect(tossNotes).toHaveLength(10);
+    expect(tossNotes[0]).toEqual({
+      id: "2026-10-12-a",
+      title: "Interaction 11",
+      brief: { ...BRIEF, feel: "feel 11" },
+      note: "note 11",
+    });
+    expect(tossNotes.map((t) => t.note).at(-1)).toBe("note 2");
+  });
+
+  it("returns the titles of every Interaction from the last 30 days only, newest first", () => {
+    const lab = openLab(makeLabDir());
+    // One a day from 2026-09-29 to 2026-10-31: kept, tossed and Inbox alike.
+    judged(
+      lab,
+      Array.from({ length: 33 }, (_, i) => ({ verdict: (["keep", "toss", null] as const)[i % 3] })),
+      "2026-09-29",
+    );
+
+    const { recentTitles } = lab.tasteContext({ date: "2026-10-30" });
+
+    // 2026-10-01 (29 days before) through 2026-10-30; not 2026-09-30 (30 days) nor 2026-10-31 (after).
+    expect(recentTitles).toHaveLength(30);
+    expect(recentTitles[0]).toBe("Interaction 31");
+    expect(recentTitles.at(-1)).toBe("Interaction 2");
+  });
+
+  it("uses only the latest Verdict on each Interaction, counting an un-kept one as a Toss", () => {
+    const lab = openLab(makeLabDir());
+    const [rekept, unkeptWithNote, unkeptSilently] = judged(
+      lab,
+      [
+        { verdict: "keep", note: "second thought" },
+        { verdict: "unkeep", note: "got old fast" },
+        { verdict: "unkeep", note: null },
+      ],
+      "2026-10-01",
+    );
+    // `judged` already kept the first one; keep it again with a fresh Note.
+    lab.recordVerdict({ id: rekept, verdict: "keep", note: "even better on a phone" });
+
+    const { keeps, tossNotes } = lab.tasteContext({ date: "2026-10-30" });
+
+    expect(keeps).toEqual([expect.objectContaining({ id: rekept, note: "even better on a phone" })]);
+    expect(tossNotes).toEqual([expect.objectContaining({ id: unkeptWithNote, note: "got old fast" })]);
+    expect([...keeps, ...tossNotes].map((t) => t.id)).not.toContain(unkeptSilently);
+  });
+
+  it("is empty in a lab with no Interactions", () => {
+    expect(openLab(makeLabDir()).tasteContext({ date: "2026-10-30" })).toEqual({
+      keeps: [],
+      tossNotes: [],
+      recentTitles: [],
+    });
+  });
+});

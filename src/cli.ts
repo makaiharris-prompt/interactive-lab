@@ -4,6 +4,7 @@
  *   npm run lab -- pick-briefs [--date YYYY-MM-DD] [--seed S]
  *   npm run lab -- register --brief '<json>' --title "..." --html path/to/index.html
  *                           [--wildcard] [--date YYYY-MM-DD]
+ *   npm run lab -- taste-context [--date YYYY-MM-DD]
  *
  * Every command takes `--lab <dir>` (default: the current directory) and prints JSON.
  */
@@ -13,7 +14,18 @@ import { openLab } from "./lab/index.ts";
 
 const USAGE = `Usage:
   lab pick-briefs [--date YYYY-MM-DD] [--seed S] [--lab DIR]
-  lab register --brief JSON --title TEXT --html FILE [--wildcard] [--date YYYY-MM-DD] [--lab DIR]`;
+  lab register --brief JSON --title TEXT --html FILE [--wildcard] [--date YYYY-MM-DD] [--lab DIR]
+  lab taste-context [--date YYYY-MM-DD] [--lab DIR]`;
+
+/** Printed with the Taste context so whoever reads the JSON knows what each part is for. */
+const TASTE_CONTEXT_ABOUT = {
+  keeps:
+    "The 10 most recent Keeps, newest first: the Brief each was written from and the user's Note (null if none). Build in the spirit of what the Notes praise.",
+  tossNotes:
+    "The Notes on the 10 most recent Tosses that have one (an un-kept Interaction counts as a Toss), newest first. Avoid what they criticise.",
+  recentTitles:
+    "Titles of every Interaction from the 30 days up to `date`, newest first. Don't repeat these ideas.",
+};
 
 function today(): string {
   const now = new Date();
@@ -53,6 +65,9 @@ function main(argv: string[]): unknown {
         html: readFileSync(values.html, "utf8"),
       });
     }
+
+    case "taste-context":
+      return { date: values.date, about: TASTE_CONTEXT_ABOUT, ...lab.tasteContext({ date: values.date }) };
 
     default:
       throw new Error(command ? `Unknown command "${command}"` : "No command given");
