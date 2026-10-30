@@ -1,0 +1,56 @@
+# Interaction Lab rules. Edit freely: no code changes are needed.
+# Vocabulary: see GLOSSARY.md.
+
+# Axes: each Brief takes one value from every Axis below.
+# Add, remove or rename values, or add a whole new Axis.
+axes:
+  trigger:
+    - hover
+    - click
+    - drag
+    - scroll
+    - cursor proximity
+    - keyboard
+    - idle (motion study)
+  subject:
+    - button
+    - card
+    - list
+    - text/type
+    - image
+    - particles
+    - grid
+    - nav
+    - abstract form
+  technique:
+    - canvas 2D
+    - fragment shader
+    - three.js scene
+    - SDF
+    - verlet/spring physics
+    - flow field
+    - particle system
+    - DOM + CSS only
+  feel:
+    - springy
+    - snappy
+    - weighty
+    - liquid
+    - floaty
+    - glitchy
+    - tactile
+    - eerie
+
+# Hard constraints: prose rules every Interaction must follow, passed to Claude as written.
+hardConstraints:
+  - >-
+    One self-contained index.html. The only external import allowed is a library
+    from the allow-list below, loaded through the Gallery's import map.
+  - Works with both mouse and touch.
+  - Respects prefers-reduced-motion.
+  - At most about 300 lines.
+  - Must pass the Smoke check.
+
+# Library allow-list: the only libraries an Interaction may import.
+libraries:
+  - three
