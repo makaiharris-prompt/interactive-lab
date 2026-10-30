@@ -22,7 +22,7 @@ import { openLab, type Lab } from "./lab/index.ts";
 const INTERACTION_HTML = /^\/lab\/interactions\/([^/]+)\/index\.html$/;
 const INTERACTION_SOURCE = /^\/lab\/interactions\/([^/]+)\/source\.html$/;
 const INTERACTION_POSTER = /^\/lab\/interactions\/([^/]+)\/poster\.png$/;
-const PREVIEW_HTML =/^\/lab\/preview\/([^/]+)\/index\.html$/;
+const PREVIEW_HTML = /^\/lab\/preview\/([^/]+)\/index\.html$/;
 const VENDOR_URL = "/lab/vendor/";
 const REPO_VENDOR_DIR = fileURLToPath(new URL("../vendor/", import.meta.url));
 
@@ -50,13 +50,13 @@ export type InteractionMiddleware = (
   next?: (err?: unknown) => void,
 ) => void;
 
-export function interactionMiddleware(options: InteractionServingOptions): InteractionMiddleware {
-  return createMiddleware(options, new Map());
-}
-
-function createMiddleware(
+/**
+ * Middleware serving Interactions. `previews` holds the HTML served at `/lab/preview/<key>/`;
+ * only the standalone server (`startInteractionServer`) fills it.
+ */
+export function interactionMiddleware(
   options: InteractionServingOptions,
-  previews: ReadonlyMap<string, string>,
+  previews: ReadonlyMap<string, string> = new Map(),
 ): InteractionMiddleware {
   const { labDir, vendorDir = REPO_VENDOR_DIR } = options;
   const lab = openLab(labDir);
@@ -139,7 +139,7 @@ export async function startInteractionServer(
   options: InteractionServingOptions & { port?: number },
 ): Promise<InteractionServer> {
   const previews = new Map<string, string>();
-  const middleware = createMiddleware(options, previews);
+  const middleware = interactionMiddleware(options, previews);
   const server = createServer((req, res) => middleware(req, res));
   await new Promise<void>((resolve) => server.listen(options.port ?? 0, "127.0.0.1", resolve));
   const { port } = server.address() as AddressInfo;
