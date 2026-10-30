@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { openLab } from "./index.ts";
+import { openLab, type Brief, type Lab } from "./index.ts";
 
 const RULES = `
 axes:
@@ -123,5 +123,41 @@ describe("register Interaction", () => {
 
   it("starts with an empty Inbox in a lab with no Interactions", () => {
     expect(openLab(makeLabDir()).inbox()).toEqual([]);
+  });
+});
+
+/** Register past Interactions, one per Brief, on consecutive days from `startDate`. */
+function registerHistory(lab: Lab, briefs: Brief[], startDate: string): void {
+  briefs.forEach((brief, i) => {
+    lab.registerInteraction({
+      brief,
+      wildcard: false,
+      title: `Past ${i}`,
+      date: addDays(startDate, i),
+      html: HTML,
+    });
+  });
+}
+
+function addDays(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+describe("Wildcard", () => {
+  it("favors Axis values with few past Briefs", () => {
+    const lab = openLab(makeLabDir());
+    // hover and click were each tried 10 times; drag never.
+    const past = Array.from({ length: 20 }, (_, i) => ({ ...BRIEF, trigger: i % 2 ? "hover" : "click" }));
+    registerHistory(lab, past, "2026-01-01");
+
+    const wildcardTriggers = Array.from(
+      { length: 30 },
+      (_, seed) => lab.pickBriefs({ date: "2026-10-30", seed }).find((p) => p.wildcard)!.brief.trigger,
+    );
+
+    // Uniform sampling would pick drag about 10 times out of 30.
+    expect(wildcardTriggers.filter((t) => t === "drag").length).toBeGreaterThanOrEqual(20);
   });
 });

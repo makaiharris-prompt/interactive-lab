@@ -28,3 +28,14 @@ function mulberry32(seed: number): Random {
 export function pickOne<T>(items: readonly T[], random: Random): T {
   return items[Math.floor(random() * items.length)]!;
 }
+
+/** Pick one item with probability proportional to `weight(item)` (all weights must be positive). */
+export function pickWeighted<T>(items: readonly T[], weight: (item: T) => number, random: Random): T {
+  const weights = items.map(weight);
+  let r = random() * weights.reduce((sum, w) => sum + w, 0);
+  for (let i = 0; i < items.length; i++) {
+    r -= weights[i]!;
+    if (r < 0) return items[i]!;
+  }
+  return items[items.length - 1]!;
+}

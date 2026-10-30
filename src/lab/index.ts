@@ -5,8 +5,9 @@
  * and hides rules parsing, sampling and file layout from its callers
  * (the lab CLI, the Gallery's dev server, tests).
  */
-import { seededRandom, pickOne } from "./random.ts";
+import { seededRandom } from "./random.ts";
 import { readRules } from "./rules.ts";
+import { ordinaryBrief, wildcardBrief } from "./sampling.ts";
 import { Storage } from "./storage.ts";
 
 /** One value per Axis, keyed by Axis name, e.g. `{ trigger: "drag", feel: "springy" }`. */
@@ -65,11 +66,12 @@ export function openLab(labDir: string): Lab {
       const { axes } = readRules(labDir);
       const random = seededRandom(`${date}\u0000${seed}`);
       const wildcardIndex = Math.floor(random() * BATCH_SIZE);
+      const history = storage.ids().map((id) => storage.readMeta(id).brief);
 
       return Array.from({ length: BATCH_SIZE }, (_, i) => {
-        const brief: Brief = {};
-        for (const [axis, values] of Object.entries(axes)) brief[axis] = pickOne(values, random);
-        return { brief, wildcard: i === wildcardIndex };
+        const wildcard = i === wildcardIndex;
+        const brief = wildcard ? wildcardBrief(axes, history, random) : ordinaryBrief(axes, random);
+        return { brief, wildcard };
       });
     },
 
