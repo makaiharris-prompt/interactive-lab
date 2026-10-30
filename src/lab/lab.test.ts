@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -79,5 +79,49 @@ describe("pick briefs", () => {
       expect(["mono", "neon"]).toContain(brief.palette);
       expect(Object.keys(brief)).toHaveLength(5);
     }
+  });
+});
+
+const BRIEF = { trigger: "drag", subject: "card", technique: "canvas 2D", feel: "springy" };
+const HTML = "<!doctype html><title>Springy card</title><canvas></canvas>";
+
+describe("register Interaction", () => {
+  it("puts the new Interaction in the Inbox with its Brief, Wildcard flag, title and date", () => {
+    const lab = openLab(makeLabDir());
+
+    const { id } = lab.registerInteraction({
+      brief: BRIEF,
+      wildcard: true,
+      title: "Springy card",
+      date: "2026-10-30",
+      html: HTML,
+    });
+
+    expect(lab.inbox()).toEqual([
+      { id, brief: BRIEF, wildcard: true, title: "Springy card", date: "2026-10-30" },
+    ]);
+    expect(lab.interactionHtml(id)).toBe(HTML);
+  });
+
+  it("stores each Interaction in its own folder named by date and position in the batch", () => {
+    const dir = makeLabDir();
+    const lab = openLab(dir);
+    const register = (title: string, date: string) =>
+      lab.registerInteraction({ brief: BRIEF, wildcard: false, title, date, html: HTML }).id;
+
+    const ids = [
+      register("First", "2026-10-30"),
+      register("Second", "2026-10-30"),
+      register("Next day", "2026-10-31"),
+    ];
+
+    expect(ids).toEqual(["2026-10-30-a", "2026-10-30-b", "2026-10-31-a"]);
+    const meta = JSON.parse(readFileSync(join(dir, "interactions", "2026-10-30-b", "meta.json"), "utf8"));
+    expect(meta).toMatchObject({ brief: BRIEF, wildcard: false, title: "Second", date: "2026-10-30" });
+    expect(existsSync(join(dir, "interactions", "2026-10-30-b", "index.html"))).toBe(true);
+  });
+
+  it("starts with an empty Inbox in a lab with no Interactions", () => {
+    expect(openLab(makeLabDir()).inbox()).toEqual([]);
   });
 });

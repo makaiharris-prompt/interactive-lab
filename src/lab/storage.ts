@@ -1,0 +1,67 @@
+/**
+ * File layout for Interactions (ADR 0006):
+ *
+ *   interactions/2026-10-30-a/
+ *     index.html   the Interaction
+ *     meta.json    Brief, Wildcard flag, title, date, Verdict, Note
+ */
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+export interface Meta {
+  brief: Record<string, string>;
+  wildcard: boolean;
+  title: string;
+  date: string;
+  /** `null` while the Interaction is in the Inbox. */
+  verdict: "keep" | "toss" | null;
+  note: string | null;
+}
+
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const ID = /^(\d{4}-\d{2}-\d{2})-([a-z])$/;
+const POSITIONS = "abcdefghijklmnopqrstuvwxyz";
+
+export class Storage {
+  readonly root: string;
+
+  constructor(labDir: string) {
+    this.root = join(labDir, "interactions");
+  }
+
+  ids(): string[] {
+    if (!existsSync(this.root)) return [];
+    return readdirSync(this.root, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && ID.test(entry.name))
+      .map((entry) => entry.name)
+      .sort();
+  }
+
+  readMeta(id: string): Meta {
+    return JSON.parse(readFileSync(join(this.folder(id), "meta.json"), "utf8"));
+  }
+
+  readHtml(id: string): string | undefined {
+    if (!ID.test(id)) return undefined;
+    const file = join(this.folder(id), "index.html");
+    return existsSync(file) ? readFileSync(file, "utf8") : undefined;
+  }
+
+  /** Create the next folder for `date` (a, b, c, …) and write the Interaction into it. */
+  create(meta: Meta, html: string): string {
+    if (!DATE.test(meta.date)) throw new Error(`Date must be YYYY-MM-DD, got "${meta.date}"`);
+    const taken = new Set(this.ids().filter((id) => id.startsWith(`${meta.date}-`)));
+    const position = [...POSITIONS].find((letter) => !taken.has(`${meta.date}-${letter}`));
+    if (!position) throw new Error(`No free position left for ${meta.date}`);
+
+    const id = `${meta.date}-${position}`;
+    mkdirSync(this.folder(id), { recursive: true });
+    writeFileSync(join(this.folder(id), "index.html"), html);
+    writeFileSync(join(this.folder(id), "meta.json"), `${JSON.stringify(meta, null, 2)}\n`);
+    return id;
+  }
+
+  private folder(id: string): string {
+    return join(this.root, id);
+  }
+}

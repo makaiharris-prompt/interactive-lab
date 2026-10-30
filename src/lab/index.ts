@@ -7,6 +7,7 @@
  */
 import { seededRandom, pickOne } from "./random.ts";
 import { readRules } from "./rules.ts";
+import { Storage } from "./storage.ts";
 
 /** One value per Axis, keyed by Axis name, e.g. `{ trigger: "drag", feel: "springy" }`. */
 export type Brief = Record<string, string>;
@@ -23,14 +24,42 @@ export interface PickBriefsOptions {
   seed: string | number;
 }
 
+export interface NewInteraction {
+  brief: Brief;
+  wildcard: boolean;
+  /** A short title, written by Claude. */
+  title: string;
+  /** The Daily batch's date, `YYYY-MM-DD`. */
+  date: string;
+  /** The Interaction itself: one self-contained HTML file. */
+  html: string;
+}
+
+/** An Interaction with no Verdict yet. */
+export interface InboxItem {
+  id: string;
+  brief: Brief;
+  wildcard: boolean;
+  title: string;
+  date: string;
+}
+
 export const BATCH_SIZE = 3;
 
 export interface Lab {
   /** Pick the Briefs for a Daily batch: 3 Briefs, exactly one flagged as the Wildcard. */
   pickBriefs(options: PickBriefsOptions): PickedBrief[];
+  /** Store a new Interaction and its metadata. It lands in the Inbox. */
+  registerInteraction(interaction: NewInteraction): { id: string };
+  /** Interactions without a Verdict, oldest first. */
+  inbox(): InboxItem[];
+  /** An Interaction's HTML, or `undefined` if there is none (unknown id, or Tossed). */
+  interactionHtml(id: string): string | undefined;
 }
 
 export function openLab(labDir: string): Lab {
+  const storage = new Storage(labDir);
+
   return {
     pickBriefs({ date, seed }) {
       const { axes } = readRules(labDir);
@@ -42,6 +71,22 @@ export function openLab(labDir: string): Lab {
         for (const [axis, values] of Object.entries(axes)) brief[axis] = pickOne(values, random);
         return { brief, wildcard: i === wildcardIndex };
       });
+    },
+
+    registerInteraction({ brief, wildcard, title, date, html }) {
+      const id = storage.create({ brief, wildcard, title, date, verdict: null, note: null }, html);
+      return { id };
+    },
+
+    inbox() {
+      return storage.ids().flatMap((id) => {
+        const { brief, wildcard, title, date, verdict } = storage.readMeta(id);
+        return verdict ? [] : [{ id, brief, wildcard, title, date }];
+      });
+    },
+
+    interactionHtml(id) {
+      return storage.readHtml(id);
     },
   };
 }
