@@ -161,3 +161,59 @@ describe("Wildcard", () => {
     expect(wildcardTriggers.filter((t) => t === "drag").length).toBeGreaterThanOrEqual(20);
   });
 });
+
+const SMALL_RULES = `
+axes:
+  trigger: [hover, click, drag]
+  feel: [springy, snappy, eerie]
+`;
+
+describe("repeat avoidance", () => {
+  it("never picks a Brief identical to one from the last 30 days, nor the same Brief twice", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    // 6 of the 9 possible Briefs were used in the 29 days before the batch.
+    registerHistory(
+      lab,
+      [
+        { trigger: "hover", feel: "springy" },
+        { trigger: "hover", feel: "snappy" },
+        { trigger: "hover", feel: "eerie" },
+        { trigger: "click", feel: "springy" },
+        { trigger: "click", feel: "snappy" },
+        { trigger: "drag", feel: "eerie" },
+      ],
+      "2026-10-01",
+    );
+
+    for (let seed = 0; seed < 20; seed++) {
+      const picked = lab.pickBriefs({ date: "2026-10-30", seed });
+
+      expect(picked.map((p) => `${p.brief.trigger} · ${p.brief.feel}`).sort()).toEqual([
+        "click · eerie",
+        "drag · snappy",
+        "drag · springy",
+      ]);
+      expect(picked.filter((p) => p.wildcard)).toHaveLength(1);
+    }
+  });
+
+  it("can reuse a Brief once it is 30 days old", () => {
+    const lab = openLab(makeLabDir("axes:\n  trigger: [hover, click, drag]\n"));
+    for (const trigger of ["hover", "click", "drag"]) {
+      lab.registerInteraction({ brief: { trigger }, wildcard: false, title: trigger, date: "2026-09-30", html: HTML });
+    }
+
+    const picked = lab.pickBriefs({ date: "2026-10-30", seed: 1 });
+
+    expect(picked.map((p) => p.brief.trigger).sort()).toEqual(["click", "drag", "hover"]);
+  });
+
+  it("says so when every possible Brief was used in the last 30 days", () => {
+    const lab = openLab(makeLabDir("axes:\n  trigger: [hover, click, drag]\n"));
+    for (const trigger of ["hover", "click", "drag"]) {
+      lab.registerInteraction({ brief: { trigger }, wildcard: false, title: trigger, date: "2026-10-01", html: HTML });
+    }
+
+    expect(() => lab.pickBriefs({ date: "2026-10-30", seed: 1 })).toThrow(/30 days/);
+  });
+});

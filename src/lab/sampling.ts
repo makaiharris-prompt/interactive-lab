@@ -4,7 +4,8 @@
  * - `ordinaryBrief`: the non-Wildcard Briefs. Uniform for now; it will follow Weights (ADR 0005).
  * - `wildcardBrief`: ignores Weights and favors Axis values with few past Briefs (ADR 0005).
  *
- * Neither knows about repeat avoidance; the caller rejects Briefs it can't use.
+ * Neither sampler knows about repeat avoidance: `unusedBrief` wraps either one and
+ * rejects Briefs that are already used.
  */
 import type { Brief } from "./index.ts";
 import { pickOne, pickWeighted, type Random } from "./random.ts";
@@ -16,6 +17,39 @@ export function ordinaryBrief(axes: Axes, random: Random): Brief {
   const brief: Brief = {};
   for (const [axis, values] of Object.entries(axes)) brief[axis] = pickOne(values, random);
   return brief;
+}
+
+/** Identifies a Brief by its values on the current Axes, so identical Briefs share a key. */
+export function briefKey(axes: Axes, brief: Brief): string {
+  return JSON.stringify(Object.keys(axes).map((axis) => brief[axis] ?? null));
+}
+
+const ATTEMPTS = 1000;
+
+/**
+ * Draw from `sample` until it gives a Brief whose key is not in `used`. If that keeps
+ * failing (nearly every Brief is used), pick uniformly among the unused ones instead.
+ * `undefined` means every possible Brief is used.
+ */
+export function unusedBrief(
+  axes: Axes,
+  sample: () => Brief,
+  used: ReadonlySet<string>,
+  random: Random,
+): Brief | undefined {
+  for (let i = 0; i < ATTEMPTS; i++) {
+    const brief = sample();
+    if (!used.has(briefKey(axes, brief))) return brief;
+  }
+  const unused = allBriefs(axes).filter((brief) => !used.has(briefKey(axes, brief)));
+  return unused.length === 0 ? undefined : pickOne(unused, random);
+}
+
+function allBriefs(axes: Axes): Brief[] {
+  return Object.entries(axes).reduce<Brief[]>(
+    (briefs, [axis, values]) => briefs.flatMap((brief) => values.map((value) => ({ ...brief, [axis]: value }))),
+    [{}],
+  );
 }
 
 /**
