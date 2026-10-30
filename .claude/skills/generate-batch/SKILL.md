@@ -80,11 +80,11 @@ What the Smoke check needs to pass (it loads the file at 800×600 inside an ifra
 npm run --silent smoke-check -- drafts/<slot>
 ```
 
-Run it with a 3-minute tool timeout. It prints `{pass, errors, poster}`:
+It takes a few seconds, at most about 20. Run it with a 3-minute tool timeout. It prints `{pass, errors, poster}`:
 
 - **Exit 0**: pass. `drafts/<slot>/poster.png` now exists. Go to 5d.
-- **Exit 1**: fail. The `errors` say what broke and when (`while loading`, `blank frame`, `after pointer move`).
-- **Exit 2, or no result within 3 minutes**: also a fail. The preflight proved the browser works, so this is the Interaction's fault, usually a hang (an endless loop, or blocking work on the main thread) surfacing as a Playwright timeout. Use the stderr text, or "timed out: the page hangs", as the error.
+- **Exit 1**: fail. The `errors` say what broke and when (`while loading`, `blank frame`, `after pointer move`). `timed out` means the page hung: an endless loop or long blocking work on the main thread.
+- **Exit 2, or no result within 3 minutes** (stop the command): also a fail, since the preflight proved the browser works. Use the stderr text, or "the Smoke check never finished", as the error.
 
 ### 5c. Retry once, then replace
 
