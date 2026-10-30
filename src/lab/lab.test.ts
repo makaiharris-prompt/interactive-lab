@@ -456,6 +456,31 @@ describe("Weights", () => {
     expect(Object.values(lab.weights().shape!)).toEqual(repeat(25, 0.5));
   });
 
+  it("steers the non-Wildcard Briefs, and leaves the Wildcard alone", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    const feels = ["springy", "snappy", "eerie"];
+    // Long before the batch, so repeat avoidance doesn't come into it. Every trigger was
+    // tried 20 times: drag was always kept, hover and click always tossed.
+    const history = ["drag", "hover", "click"].flatMap((trigger) =>
+      Array.from({ length: 20 }, (_, i) => ({
+        brief: { trigger, feel: feels[i % 3]! },
+        verdict: trigger === "drag" ? ("keep" as const) : ("toss" as const),
+      })),
+    );
+    judgedHistory(lab, history, "2025-01-01");
+    // drag ≈ 0.95 against ≈ 0.05 each for hover and click: about 90% of the trigger weight.
+    expect(share(lab.weights().trigger!, "drag")).toBeGreaterThan(0.85);
+
+    const batches = Array.from({ length: 30 }, (_, seed) => lab.pickBriefs({ date: "2026-10-30", seed }));
+    const triggers = (wildcard: boolean) =>
+      batches.flatMap((batch) => batch.filter((p) => p.wildcard === wildcard).map((p) => p.brief.trigger));
+
+    // 60 ordinary Briefs: uniform sampling would give about 20 drags, the Weights about 54.
+    expect(triggers(false).filter((t) => t === "drag").length).toBeGreaterThanOrEqual(45);
+    // 30 Wildcards: every trigger was tried equally often, so drag gets no special favor.
+    expect(triggers(true).filter((t) => t === "drag").length).toBeLessThan(20);
+  });
+
   it("ignores past Briefs' values that are no longer in the rules file", () => {
     const lab = openLab(makeLabDir(SMALL_RULES));
     judgedHistory(lab, [{ brief: { trigger: "scroll", feel: "springy", palette: "neon" }, verdict: "keep" }]);

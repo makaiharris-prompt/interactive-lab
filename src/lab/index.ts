@@ -77,7 +77,8 @@ function daysBetween(from: string, to: string): number {
 export interface Lab {
   /**
    * Pick the Briefs for a Daily batch: 3 different Briefs, exactly one flagged as the Wildcard.
-   * The Wildcard favors Axis values with few past Briefs. No Brief repeats one from the last
+   * The other two sample each Axis value by its Weight; the Wildcard ignores Weights and
+   * favors Axis values with few past Briefs. No Brief repeats one from the last
    * 30 days; throws if every possible Brief was used in that window.
    */
   pickBriefs(options: PickBriefsOptions): PickedBrief[];
@@ -107,6 +108,7 @@ export function openLab(labDir: string): Lab {
       const wildcardIndex = Math.floor(random() * BATCH_SIZE);
       const history = storage.ids().map((id) => storage.readMeta(id));
       const pastBriefs = history.map((past) => past.brief);
+      const weights = computeWeights(axes, history);
 
       // Briefs used in the last 30 days (ADR 0005), plus the ones already in this batch.
       const used = new Set(
@@ -119,7 +121,7 @@ export function openLab(labDir: string): Lab {
         const wildcard = i === wildcardIndex;
         const sample = wildcard
           ? () => wildcardBrief(axes, pastBriefs, random)
-          : () => ordinaryBrief(axes, random);
+          : () => ordinaryBrief(axes, weights, random);
         const brief = unusedBrief(axes, sample, used, random);
         if (!brief) {
           throw new Error(

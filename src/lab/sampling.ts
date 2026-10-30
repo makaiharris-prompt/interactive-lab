@@ -1,7 +1,7 @@
 /**
  * How a single Brief is sampled. There are two samplers, kept apart on purpose:
  *
- * - `ordinaryBrief`: the non-Wildcard Briefs. Uniform for now; it will follow Weights (ADR 0005).
+ * - `ordinaryBrief`: the non-Wildcard Briefs. Each value is picked in proportion to its Weight (ADR 0005).
  * - `wildcardBrief`: ignores Weights and favors Axis values with few past Briefs (ADR 0005).
  *
  * Neither sampler knows about repeat avoidance: `unusedBrief` wraps either one and
@@ -9,13 +9,16 @@
  */
 import type { Brief } from "./index.ts";
 import { pickOne, pickWeighted, type Random } from "./random.ts";
+import type { Weights } from "./weights.ts";
 
 /** Axis name → its values. */
 export type Axes = Record<string, string[]>;
 
-export function ordinaryBrief(axes: Axes, random: Random): Brief {
+export function ordinaryBrief(axes: Axes, weights: Weights, random: Random): Brief {
   const brief: Brief = {};
-  for (const [axis, values] of Object.entries(axes)) brief[axis] = pickOne(values, random);
+  for (const [axis, values] of Object.entries(axes)) {
+    brief[axis] = pickWeighted(values, (value) => weights[axis]![value]!, random);
+  }
   return brief;
 }
 
