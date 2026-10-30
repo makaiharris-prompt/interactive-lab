@@ -79,6 +79,16 @@ describe("Smoke check", () => {
     ]);
   });
 
+  it.each(["hangs-while-loading", "hangs-on-pointer-move"])(
+    "fails an Interaction that hangs (%s) once the time limit runs out",
+    async (name) => {
+      const result = await smokeCheck(fixture(name), { labDir: REPO_LAB, timeLimitMs: 5_000 });
+
+      expect(result.pass).toBe(false);
+      expect(result.errors).toContainEqual(expect.stringMatching(/timed out after 5s/));
+    },
+  );
+
   it("fails an Interaction whose rendered frame is blank", async () => {
     const result = await smokeCheck(fixture("renders-blank"), { labDir: REPO_LAB });
 

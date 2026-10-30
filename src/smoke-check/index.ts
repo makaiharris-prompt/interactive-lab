@@ -7,6 +7,7 @@
  *   - any console error or uncaught exception while loading
  *   - a rendered frame that is one flat color (catches silent WebGL failures)
  *   - any console error or uncaught exception after a pointer sweep across the viewport
+ *   - not finishing within a time limit (a hung page: an endless loop on the main thread)
  */
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -27,7 +28,11 @@ export interface SmokeCheckOptions {
   labDir: string;
   /** Where vendored libraries live. Defaults to this repo's `vendor/`. */
   vendorDir?: string;
+  /** How long the whole check may take before the Interaction fails as hung. Defaults to 20s. */
+  timeLimitMs?: number;
 }
+
+const TIME_LIMIT_MS = 20_000;
 
 export interface SmokeResult {
   pass: boolean;
@@ -39,12 +44,16 @@ export interface SmokeResult {
 
 /** Smoke check an Interaction's HTML. */
 export async function smokeCheck(html: string, options: SmokeCheckOptions): Promise<SmokeResult> {
+  const timeLimitMs = options.timeLimitMs ?? TIME_LIMIT_MS;
   const server = await startInteractionServer(options);
   const browser = await chromium.launch();
-  try {
+  const errors: string[] = [];
+  let phase = "while loading";
+  let thumbnail: Buffer = Buffer.alloc(0);
+  let timer: NodeJS.Timeout | undefined;
+
+  const check = async () => {
     const page = await browser.newPage({ viewport: VIEWPORT });
-    const errors: string[] = [];
-    let phase = "while loading";
     page.on("console", (message) => {
       if (message.type() === "error") errors.push(`${phase}: ${message.text()}`);
     });
@@ -53,10 +62,11 @@ export async function smokeCheck(html: string, options: SmokeCheckOptions): Prom
     await page.setContent(
       `<style>html,body{margin:0;height:100%}iframe{border:0;width:100%;height:100%;display:block}</style>` +
         `<iframe sandbox="${SANDBOX}" src="${server.previewUrl(html)}"></iframe>`,
+      { timeout: 0 },
     );
-    await page.waitForLoadState("load");
+    await page.waitForLoadState("load", { timeout: 0 });
     await page.waitForTimeout(SETTLE_MS);
-    const thumbnail = await page.screenshot();
+    thumbnail = await page.screenshot({ timeout: 0 });
     if (await isBlank(browser, thumbnail)) {
       errors.push("blank frame: every pixel of the rendered frame is the same color");
     }
@@ -64,10 +74,25 @@ export async function smokeCheck(html: string, options: SmokeCheckOptions): Prom
     phase = "after pointer move";
     await sweepPointer(page);
     await page.waitForTimeout(AFTER_POINTER_MS);
+  };
 
+  try {
+    const checking = check();
+    // After a time-out the browser is closed under the check, which then rejects: that is expected.
+    checking.catch(() => {});
+    const timedOut = new Promise<"timed out">((resolve) => {
+      timer = setTimeout(() => resolve("timed out"), timeLimitMs);
+    });
+    if ((await Promise.race([checking, timedOut])) === "timed out") {
+      errors.push(
+        `${phase}: timed out after ${timeLimitMs / 1000}s; the page stopped responding ` +
+          `(an endless loop or long blocking work on the main thread?)`,
+      );
+    }
     // A handler that throws on every frame or move reports the same error many times.
     return { pass: errors.length === 0, errors: [...new Set(errors)], thumbnail };
   } finally {
+    clearTimeout(timer);
     await browser.close();
     await server.close();
   }
