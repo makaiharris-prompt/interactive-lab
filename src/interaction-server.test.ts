@@ -87,6 +87,22 @@ describe("interaction server", () => {
     });
   });
 
+  it("serves an Interaction's poster.png, for the Kept collection's thumbnails", async () => {
+    const { labDir, id } = makeLab(["three"]);
+    const vendorDir = makeVendor({ "three/index.js": "" });
+    const png = Buffer.from("\x89PNG fake poster", "latin1");
+    writeFileSync(join(labDir, "interactions", id, "poster.png"), png);
+    const server = await start({ labDir, vendorDir });
+
+    const res = await fetch(`${server.url}/lab/interactions/${id}/poster.png`);
+    const missing = await fetch(`${server.url}/lab/interactions/2026-10-30-z/poster.png`);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/png");
+    expect(Buffer.from(await res.arrayBuffer())).toEqual(png);
+    expect(missing.status).toBe(404);
+  });
+
   it("serves vendored modules to sandboxed iframes, whose origin is opaque", async () => {
     const { labDir } = makeLab(["three"]);
     const vendorDir = makeVendor({

@@ -3,6 +3,7 @@
  * Smoke check load them the same way.
  *
  *   GET /lab/interactions/<id>/index.html → the Interaction's HTML, with the lab's import map injected
+ *   GET /lab/interactions/<id>/poster.png → the Interaction's thumbnail, saved by the Smoke check
  *   GET /lab/vendor/<library>/<file>      → a vendored library file, for allow-listed libraries only
  *   GET /lab/preview/<n>/index.html       → HTML handed to `previewUrl` (standalone server only)
  *
@@ -19,7 +20,8 @@ import { openLab } from "./lab/index.ts";
 import { readRules } from "./lab/rules.ts";
 
 const INTERACTION_HTML = /^\/lab\/interactions\/([^/]+)\/index\.html$/;
-const PREVIEW_HTML = /^\/lab\/preview\/([^/]+)\/index\.html$/;
+const INTERACTION_POSTER = /^\/lab\/interactions\/([^/]+)\/poster\.png$/;
+const PREVIEW_HTML =/^\/lab\/preview\/([^/]+)\/index\.html$/;
 const VENDOR_URL = "/lab/vendor/";
 const REPO_VENDOR_DIR = fileURLToPath(new URL("../vendor/", import.meta.url));
 
@@ -70,6 +72,16 @@ function createMiddleware(
 
     const interaction = INTERACTION_HTML.exec(path);
     if (interaction) return servePage(res, lab.interactionHtml(decodeURIComponent(interaction[1]!)));
+
+    const poster = INTERACTION_POSTER.exec(path);
+    if (poster) {
+      const png = lab.interactionPoster(decodeURIComponent(poster[1]!));
+      if (png === undefined) return notFound(res, "No poster for this Interaction");
+      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Cache-Control", "no-store");
+      res.end(png);
+      return;
+    }
 
     const preview = PREVIEW_HTML.exec(path);
     if (preview) return servePage(res, previews.get(preview[1]!));
