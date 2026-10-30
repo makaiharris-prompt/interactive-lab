@@ -317,3 +317,290 @@ describe("repeat avoidance", () => {
     expect(() => lab.pickBriefs({ date: "2026-10-30", seed: 1 })).toThrow(/30 days/);
   });
 });
+
+interface PastVerdict {
+  brief: Brief;
+  /** `null` leaves the Interaction in the Inbox. */
+  verdict: "keep" | "toss" | null;
+  wildcard?: boolean;
+}
+
+/** Register one past Interaction per entry, on consecutive days from `startDate`, and judge it. */
+function judgedHistory(lab: Lab, history: PastVerdict[], startDate = "2026-01-01"): string[] {
+  return history.map(({ brief, verdict, wildcard = false }, i) => {
+    const { id } = lab.registerInteraction({
+      brief,
+      wildcard,
+      title: `Past ${i}`,
+      date: addDays(startDate, i),
+      html: HTML,
+    });
+    if (verdict) lab.recordVerdict({ id, verdict });
+    return id;
+  });
+}
+
+function repeat<T>(times: number, item: T): T[] {
+  return Array.from({ length: times }, () => item);
+}
+
+/** A Weight's share of its Axis's total. */
+function share(weights: Record<string, number>, value: string): number {
+  const total = Object.values(weights).reduce((sum, w) => sum + w, 0);
+  return weights[value]! / total;
+}
+
+describe("Weights", () => {
+  it("gives every Axis value 0.5 before any Verdict", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+
+    expect(lab.weights()).toEqual({
+      trigger: { hover: 0.5, click: 0.5, drag: 0.5 },
+      feel: { springy: 0.5, snappy: 0.5, eerie: 0.5 },
+    });
+  });
+
+  it("is (keeps + 1) / (keeps + tosses + 2) for each Axis value in a judged Brief", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    judgedHistory(lab, [
+      ...repeat(3, { brief: { trigger: "hover", feel: "springy" }, verdict: "keep" as const }),
+      { brief: { trigger: "hover", feel: "snappy" }, verdict: "toss" },
+      { brief: { trigger: "click", feel: "springy" }, verdict: "toss" },
+    ]);
+
+    expect(lab.weights()).toEqual({
+      // hover: 3 Keeps, 1 Toss → 4/6. click: 1 Toss → 1/3. drag: untried → 1/2.
+      trigger: { hover: expect.closeTo(4 / 6), click: expect.closeTo(1 / 3), drag: 0.5 },
+      // springy: 3 Keeps, 1 Toss → 4/6. snappy: 1 Toss → 1/3. eerie: untried → 1/2.
+      feel: { springy: expect.closeTo(4 / 6), snappy: expect.closeTo(1 / 3), eerie: 0.5 },
+    });
+  });
+
+  it("can't drop a value to zero with one Toss, so it still gets picked", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    judgedHistory(lab, [{ brief: { trigger: "drag", feel: "eerie" }, verdict: "toss" }]);
+
+    expect(lab.weights().trigger.drag).toBeCloseTo(1 / 3);
+    const ordinaryTriggers = Array.from({ length: 30 }, (_, seed) =>
+      lab.pickBriefs({ date: "2026-10-30", seed }).filter((p) => !p.wildcard).map((p) => p.brief.trigger),
+    ).flat();
+    expect(ordinaryTriggers).toContain("drag");
+  });
+
+  it("ignores Interactions still in the Inbox", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    judgedHistory(lab, [
+      ...repeat(5, { brief: { trigger: "hover", feel: "springy" }, verdict: null }),
+      { brief: { trigger: "click", feel: "snappy" }, verdict: "keep" },
+      ...repeat(5, { brief: { trigger: "click", feel: "snappy" }, verdict: null }),
+    ]);
+
+    expect(lab.weights()).toEqual({
+      trigger: { hover: 0.5, click: expect.closeTo(2 / 3), drag: 0.5 },
+      feel: { springy: 0.5, snappy: expect.closeTo(2 / 3), eerie: 0.5 },
+    });
+  });
+
+  it("counts Wildcard Verdicts like any other", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    judgedHistory(lab, [{ brief: { trigger: "drag", feel: "eerie" }, verdict: "keep", wildcard: true }]);
+
+    expect(lab.weights().trigger.drag).toBeCloseTo(2 / 3);
+    expect(lab.weights().feel.eerie).toBeCloseTo(2 / 3);
+  });
+
+  it("follows only the latest Verdict when one changes", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    const [id] = judgedHistory(lab, [{ brief: { trigger: "hover", feel: "springy" }, verdict: "keep" }]);
+    lab.recordVerdict({ id: id!, verdict: "keep", note: "still love it" });
+    expect(lab.weights().trigger.hover).toBeCloseTo(2 / 3); // one Keep, not two
+
+    lab.recordVerdict({ id: id!, verdict: "unkeep" });
+
+    expect(lab.weights().trigger.hover).toBeCloseTo(1 / 3); // one Toss, and the Keep is gone
+    expect(lab.weights().feel.springy).toBeCloseTo(1 / 3);
+  });
+
+  it("raises a much-Tossed value to 5% of its Axis's total, leaving the others alone", () => {
+    const lab = openLab(makeLabDir("axes:\n  trigger: [hover, click, drag]\n"));
+    // 38 Tosses: (0 + 1) / (38 + 2) = 0.025, only 2.4% of 0.025 + 0.5 + 0.5.
+    judgedHistory(lab, repeat(38, { brief: { trigger: "hover" }, verdict: "toss" as const }));
+
+    const { trigger } = lab.weights();
+
+    // hover = 5% of (hover + 1)  →  hover = 0.05 / 0.95 = 1/19.
+    expect(trigger).toEqual({ hover: expect.closeTo(1 / 19), click: 0.5, drag: 0.5 });
+    expect(share(trigger!, "hover")).toBeCloseTo(0.05);
+  });
+
+  it("keeps every value at 5% or more even when several need raising", () => {
+    const lab = openLab(makeLabDir("axes:\n  trigger: [hover, click, drag]\n"));
+    judgedHistory(lab, [
+      ...repeat(38, { brief: { trigger: "hover" }, verdict: "toss" as const }),
+      ...repeat(38, { brief: { trigger: "click" }, verdict: "toss" as const }),
+      ...repeat(40, { brief: { trigger: "drag" }, verdict: "keep" as const }),
+    ]);
+
+    const { trigger } = lab.weights();
+
+    // drag = 41/42 and stays put; hover and click each end up at exactly 5% of the total.
+    expect(trigger!.drag).toBeCloseTo(41 / 42);
+    expect(share(trigger!, "hover")).toBeCloseTo(0.05);
+    expect(share(trigger!, "click")).toBeCloseTo(0.05);
+  });
+
+  it("leaves an Axis with more than 20 untried values evenly weighted", () => {
+    const values = Array.from({ length: 25 }, (_, i) => `v${i}`);
+    const lab = openLab(makeLabDir(`axes:\n  shape: [${values.join(", ")}]\n`));
+
+    expect(Object.values(lab.weights().shape!)).toEqual(repeat(25, 0.5));
+  });
+
+  it("steers the non-Wildcard Briefs, and leaves the Wildcard alone", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    const feels = ["springy", "snappy", "eerie"];
+    // Long before the batch, so repeat avoidance doesn't come into it. Every trigger was
+    // tried 20 times: drag was always kept, hover and click always tossed.
+    const history = ["drag", "hover", "click"].flatMap((trigger) =>
+      Array.from({ length: 20 }, (_, i) => ({
+        brief: { trigger, feel: feels[i % 3]! },
+        verdict: trigger === "drag" ? ("keep" as const) : ("toss" as const),
+      })),
+    );
+    judgedHistory(lab, history, "2025-01-01");
+    // drag ≈ 0.95 against ≈ 0.05 each for hover and click: about 90% of the trigger weight.
+    expect(share(lab.weights().trigger!, "drag")).toBeGreaterThan(0.85);
+
+    const batches = Array.from({ length: 30 }, (_, seed) => lab.pickBriefs({ date: "2026-10-30", seed }));
+    const triggers = (wildcard: boolean) =>
+      batches.flatMap((batch) => batch.filter((p) => p.wildcard === wildcard).map((p) => p.brief.trigger));
+
+    // 60 ordinary Briefs: uniform sampling would give about 20 drags, the Weights about 54.
+    expect(triggers(false).filter((t) => t === "drag").length).toBeGreaterThanOrEqual(45);
+    // 30 Wildcards: every trigger was tried equally often, so drag gets no special favor.
+    expect(triggers(true).filter((t) => t === "drag").length).toBeLessThan(20);
+  });
+
+  it("ignores past Briefs' values that are no longer in the rules file", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    judgedHistory(lab, [{ brief: { trigger: "scroll", feel: "springy", palette: "neon" }, verdict: "keep" }]);
+
+    expect(lab.weights()).toEqual({
+      trigger: { hover: 0.5, click: 0.5, drag: 0.5 },
+      feel: { springy: expect.closeTo(2 / 3), snappy: 0.5, eerie: 0.5 },
+    });
+  });
+});
+
+describe("Taste context", () => {
+  type Judgement = { verdict: "keep" | "toss" | "unkeep" | null; note?: string | null };
+
+  /** Register one Interaction per day from `startDate`, give the i-th one `judgements[i]`, return the ids. */
+  function judged(lab: Lab, judgements: Judgement[], startDate: string): string[] {
+    return judgements.map(({ verdict, note = null }, i) => {
+      const { id } = lab.registerInteraction({
+        brief: { ...BRIEF, feel: `feel ${i}` },
+        wildcard: false,
+        title: `Interaction ${i}`,
+        date: addDays(startDate, i),
+        html: HTML,
+      });
+      if (verdict === "unkeep") lab.recordVerdict({ id, verdict: "keep", note: "first thought" });
+      if (verdict) lab.recordVerdict({ id, verdict, note });
+      return id;
+    });
+  }
+
+  it("returns the Briefs and Notes of at most the 10 most recent Keeps, newest first", () => {
+    const lab = openLab(makeLabDir());
+    judged(
+      lab,
+      Array.from({ length: 12 }, (_, i) => ({ verdict: "keep" as const, note: i % 2 ? `note ${i}` : null })),
+      "2026-10-01",
+    );
+
+    const { keeps } = lab.tasteContext({ date: "2026-10-30" });
+
+    expect(keeps).toHaveLength(10);
+    expect(keeps[0]).toEqual({
+      id: "2026-10-12-a",
+      title: "Interaction 11",
+      brief: { ...BRIEF, feel: "feel 11" },
+      note: "note 11",
+    });
+    expect(keeps[1]).toMatchObject({ id: "2026-10-11-a", note: null });
+    expect(keeps.at(-1)).toMatchObject({ id: "2026-10-03-a", title: "Interaction 2" });
+  });
+
+  it("returns the Notes of at most the 10 most recent Tosses that have a Note, skipping the rest", () => {
+    const lab = openLab(makeLabDir());
+    // 12 Tosses with a Note, and the newest 3 Tosses have no Note (empty or blank counts as none).
+    judged(
+      lab,
+      [
+        ...Array.from({ length: 12 }, (_, i) => ({ verdict: "toss" as const, note: `note ${i}` })),
+        { verdict: "toss", note: null },
+        { verdict: "toss", note: "" },
+        { verdict: "toss", note: "   " },
+      ],
+      "2026-10-01",
+    );
+
+    const { tossNotes } = lab.tasteContext({ date: "2026-10-30" });
+
+    expect(tossNotes).toHaveLength(10);
+    expect(tossNotes[0]).toEqual({
+      id: "2026-10-12-a",
+      title: "Interaction 11",
+      brief: { ...BRIEF, feel: "feel 11" },
+      note: "note 11",
+    });
+    expect(tossNotes.map((t) => t.note).at(-1)).toBe("note 2");
+  });
+
+  it("returns the titles of every Interaction from the last 30 days only, newest first", () => {
+    const lab = openLab(makeLabDir());
+    // One a day from 2026-09-29 to 2026-10-31: kept, tossed and Inbox alike.
+    judged(
+      lab,
+      Array.from({ length: 33 }, (_, i) => ({ verdict: (["keep", "toss", null] as const)[i % 3] })),
+      "2026-09-29",
+    );
+
+    const { recentTitles } = lab.tasteContext({ date: "2026-10-30" });
+
+    // 2026-10-01 (29 days before) through 2026-10-30; not 2026-09-30 (30 days) nor 2026-10-31 (after).
+    expect(recentTitles).toHaveLength(30);
+    expect(recentTitles[0]).toBe("Interaction 31");
+    expect(recentTitles.at(-1)).toBe("Interaction 2");
+  });
+
+  it("uses only the latest Verdict on each Interaction, counting an un-kept one as a Toss", () => {
+    const lab = openLab(makeLabDir());
+    const [rekept, unkeptWithNote, unkeptSilently] = judged(
+      lab,
+      [
+        { verdict: "keep", note: "second thought" },
+        { verdict: "unkeep", note: "got old fast" },
+        { verdict: "unkeep", note: null },
+      ],
+      "2026-10-01",
+    );
+    // `judged` already kept the first one; keep it again with a fresh Note.
+    lab.recordVerdict({ id: rekept, verdict: "keep", note: "even better on a phone" });
+
+    const { keeps, tossNotes } = lab.tasteContext({ date: "2026-10-30" });
+
+    expect(keeps).toEqual([expect.objectContaining({ id: rekept, note: "even better on a phone" })]);
+    expect(tossNotes).toEqual([expect.objectContaining({ id: unkeptWithNote, note: "got old fast" })]);
+    expect([...keeps, ...tossNotes].map((t) => t.id)).not.toContain(unkeptSilently);
+  });
+
+  it("is empty in a lab with no Interactions", () => {
+    expect(openLab(makeLabDir()).tasteContext({ date: "2026-10-30" })).toEqual({
+      keeps: [],
+      tossNotes: [],
+      recentTitles: [],
+    });
+  });
+});
