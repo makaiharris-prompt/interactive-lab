@@ -1,0 +1,13 @@
+{
+  "brief": {
+    "trigger": "cursor proximity",
+    "subject": "nav",
+    "technique": "DOM + CSS only",
+    "feel": "floaty"
+  },
+  "wildcard": true,
+  "title": "Lantern Menu",
+  "date": "2026-10-30",
+  "verdict": null,
+  "note": null
+}

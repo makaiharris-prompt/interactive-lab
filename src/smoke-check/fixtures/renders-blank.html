@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Renders blank</title>
+<style>html, body { margin: 0; height: 100%; background: #000; } canvas { display: block; }</style>
+</head>
+<body>
+<canvas></canvas>
+<script>
+  // Like a WebGL scene whose draw silently does nothing: no errors, nothing drawn.
+  const canvas = document.querySelector("canvas");
+  canvas.width = innerWidth;
+  canvas.height = innerHeight;
+  const ctx = canvas.getContext("2d");
+  function frame() {
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    requestAnimationFrame(frame);
+  }
+  frame();
+</script>
+</body>
+</html>

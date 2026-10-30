@@ -21,3 +21,11 @@ Options considered: a Claude desktop scheduled task, a cloud routine (it would h
 - The run only happens while the Claude desktop app is open. A missed run happens the next time the app opens, so no day is lost.
 - You only ever see Interactions that pass the Smoke check.
 - The Smoke check needs a headless browser (e.g. Playwright) as a dev dependency.
+
+## Amendment (2026-10-30): replacements are capped
+
+_Deviates from the Decision above, which reads as "replace until one passes": an unattended run must always end, so replacements are bounded._
+
+- An ordinary slot gets at most 2 replacements (3 Briefs); the Wildcard slot at most 5, each a Wildcard replacement, so the batch keeps its Wildcard in all but extreme cases.
+- A slot whose last Brief fails stays empty, so a Daily batch can have fewer than 3 Interactions, and, if the Wildcard slot is the empty one, no Wildcard (against ADR 0005's one per batch).
+- The run's report flags a short batch, and a missing Wildcard, on its first line.

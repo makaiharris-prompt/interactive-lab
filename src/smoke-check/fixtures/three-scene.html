@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>three.js scene</title>
+<style>html, body { margin: 0; height: 100%; overflow: hidden; background: #000; }</style>
+</head>
+<body>
+<script type="module">
+  import * as THREE from "three";
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(innerWidth, innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100);
+  camera.position.z = 4;
+
+  const mesh = new THREE.Mesh(new THREE.TorusKnotGeometry(1, 0.35, 128, 16), new THREE.MeshNormalMaterial());
+  scene.add(mesh);
+
+  const pointer = new THREE.Vector2();
+  addEventListener("pointermove", (e) => {
+    pointer.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  });
+
+  renderer.setAnimationLoop((t) => {
+    mesh.rotation.x = t / 2000 + pointer.y;
+    mesh.rotation.y = t / 1500 + pointer.x;
+    renderer.render(scene, camera);
+  });
+</script>
+</body>
+</html>

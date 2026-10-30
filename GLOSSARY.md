@@ -18,6 +18,9 @@ One dimension a Brief is sampled from (trigger, element, feel, …). Axes and th
 **Hard constraint**
 A rule that every Interaction must follow regardless of its Brief (single file, works with mouse and touch, respects `prefers-reduced-motion`, …). Hard constraints also live in `rules.yaml`.
 
+**Style guide**
+The overall aesthetic every Interaction aims for (currently minimal, modern and dark, riffing on a React Bits component picked by the `inspiration` Axis). It's prose in `rules.yaml` passed to Claude as written. Unlike a Hard constraint it's a matter of taste, so the Smoke check doesn't enforce it.
+
 **Daily batch**
 The 3 Interactions generated on one day.
 

@@ -1,0 +1,782 @@
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { openLab, type Brief, type Lab, type VerdictAction } from "./index.ts";
+
+const RULES = `
+axes:
+  trigger: [hover, click, drag]
+  subject: [button, card]
+  technique: [canvas 2D, fragment shader]
+  feel: [springy, snappy, eerie]
+hardConstraints:
+  - Works with both mouse and touch.
+libraries:
+  - three
+`;
+
+const dirs: string[] = [];
+
+function makeLabDir(rules = RULES): string {
+  const dir = mkdtempSync(join(tmpdir(), "lab-test-"));
+  dirs.push(dir);
+  writeFileSync(join(dir, "rules.yaml"), rules);
+  return dir;
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+describe("pick briefs", () => {
+  it("returns 3 Briefs with one value per Axis and exactly one Wildcard", () => {
+    const lab = openLab(makeLabDir());
+
+    const picked = lab.pickBriefs({ date: "2026-10-30", seed: 1 });
+
+    expect(picked).toHaveLength(3);
+    for (const { brief } of picked) {
+      expect(Object.keys(brief).sort()).toEqual(["feel", "subject", "technique", "trigger"]);
+      expect(["hover", "click", "drag"]).toContain(brief.trigger);
+      expect(["button", "card"]).toContain(brief.subject);
+      expect(["canvas 2D", "fragment shader"]).toContain(brief.technique);
+      expect(["springy", "snappy", "eerie"]).toContain(brief.feel);
+    }
+    expect(picked.filter((p) => p.wildcard)).toHaveLength(1);
+  });
+
+  it("always returns the same Briefs for the same date and seed", () => {
+    const lab = openLab(makeLabDir());
+
+    const first = lab.pickBriefs({ date: "2026-10-30", seed: 42 });
+    const again = openLab(makeLabDir()).pickBriefs({ date: "2026-10-30", seed: 42 });
+
+    expect(again).toEqual(first);
+  });
+
+  it("varies the Briefs with the seed and the date", () => {
+    const lab = openLab(makeLabDir());
+    const base = lab.pickBriefs({ date: "2026-10-30", seed: 42 });
+
+    const otherSeeds = [1, 2, 3, 4, 5].map((seed) => lab.pickBriefs({ date: "2026-10-30", seed }));
+    const otherDates = ["2026-10-31", "2026-11-01", "2026-11-02"].map((date) =>
+      lab.pickBriefs({ date, seed: 42 }),
+    );
+
+    expect(otherSeeds.some((p) => JSON.stringify(p) !== JSON.stringify(base))).toBe(true);
+    expect(otherDates.some((p) => JSON.stringify(p) !== JSON.stringify(base))).toBe(true);
+  });
+
+  it("includes an Axis added to the rules file, with no code change", () => {
+    const lab = openLab(
+      makeLabDir(`${RULES.replace("axes:\n", "axes:\n  palette: [mono, neon]\n")}`),
+    );
+
+    const picked = lab.pickBriefs({ date: "2026-10-30", seed: 7 });
+
+    for (const { brief } of picked) {
+      expect(["mono", "neon"]).toContain(brief.palette);
+      expect(Object.keys(brief)).toHaveLength(5);
+    }
+  });
+});
+
+const BRIEF = { trigger: "drag", subject: "card", technique: "canvas 2D", feel: "springy" };
+const HTML = "<!doctype html><title>Springy card</title><canvas></canvas>";
+
+describe("register Interaction", () => {
+  it("puts the new Interaction in the Inbox with its Brief, Wildcard flag, title and date", () => {
+    const lab = openLab(makeLabDir());
+
+    const { id } = lab.registerInteraction({
+      brief: BRIEF,
+      wildcard: true,
+      title: "Springy card",
+      date: "2026-10-30",
+      html: HTML,
+    });
+
+    expect(lab.inbox()).toEqual([
+      { id, brief: BRIEF, wildcard: true, title: "Springy card", date: "2026-10-30" },
+    ]);
+    expect(lab.interactionHtml(id)).toBe(HTML);
+  });
+
+  it("stores each Interaction in its own folder named by date and position in the batch", () => {
+    const dir = makeLabDir();
+    const lab = openLab(dir);
+    const register = (title: string, date: string) =>
+      lab.registerInteraction({ brief: BRIEF, wildcard: false, title, date, html: HTML }).id;
+
+    const ids = [
+      register("First", "2026-10-30"),
+      register("Second", "2026-10-30"),
+      register("Next day", "2026-10-31"),
+    ];
+
+    expect(ids).toEqual(["2026-10-30-a", "2026-10-30-b", "2026-10-31-a"]);
+    const meta = JSON.parse(readFileSync(join(dir, "interactions", "2026-10-30-b", "meta.json"), "utf8"));
+    expect(meta).toMatchObject({ brief: BRIEF, wildcard: false, title: "Second", date: "2026-10-30" });
+    expect(existsSync(join(dir, "interactions", "2026-10-30-b", "index.html"))).toBe(true);
+  });
+
+  it("saves the Smoke check's poster into the Interaction's folder as poster.png", () => {
+    const dir = makeLabDir();
+    const poster = Buffer.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+
+    const { id } = openLab(dir).registerInteraction({
+      brief: BRIEF,
+      wildcard: false,
+      title: "Springy card",
+      date: "2026-10-30",
+      html: HTML,
+      poster,
+    });
+
+    expect(readFileSync(join(dir, "interactions", id, "poster.png"))).toEqual(poster);
+  });
+
+  it("starts with an empty Inbox in a lab with no Interactions", () => {
+    expect(openLab(makeLabDir()).inbox()).toEqual([]);
+  });
+});
+
+describe("record a Verdict", () => {
+  function labWithOne() {
+    const dir = makeLabDir();
+    const lab = openLab(dir);
+    const { id } = lab.registerInteraction({
+      brief: BRIEF,
+      wildcard: false,
+      title: "Springy card",
+      date: "2026-10-30",
+      html: HTML,
+    });
+    // meta.json is the documented, git-tracked record of a Verdict (ADR 0006).
+    const meta = () => JSON.parse(readFileSync(join(dir, "interactions", id, "meta.json"), "utf8"));
+    const htmlFile = join(dir, "interactions", id, "index.html");
+    return { lab, id, meta, htmlFile };
+  }
+
+  it("saves a Keep and its Note to the metadata and takes the Interaction out of the Inbox", () => {
+    const { lab, id, meta } = labWithOne();
+
+    lab.recordVerdict({ id, action: "keep", note: "love the easing" });
+
+    expect(meta()).toMatchObject({ verdict: "keep", note: "love the easing", title: "Springy card" });
+    expect(lab.inbox()).toEqual([]);
+    expect(lab.interactionHtml(id)).toBe(HTML);
+  });
+
+  it("deletes the HTML on a Toss and keeps the metadata", () => {
+    const { lab, id, meta, htmlFile } = labWithOne();
+
+    lab.recordVerdict({ id, action: "toss", note: "hate the color" });
+
+    expect(existsSync(htmlFile)).toBe(false);
+    expect(lab.interactionHtml(id)).toBeUndefined();
+    expect(meta()).toEqual({
+      brief: BRIEF,
+      wildcard: false,
+      title: "Springy card",
+      date: "2026-10-30",
+      verdict: "toss",
+      note: "hate the color",
+      verdictAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/),
+    });
+    expect(lab.inbox()).toEqual([]);
+  });
+
+  it("turns a Keep into a Toss on un-keep, deleting the HTML", () => {
+    const { lab, id, meta, htmlFile } = labWithOne();
+    lab.recordVerdict({ id, action: "keep", note: "love the easing" });
+
+    lab.recordVerdict({ id, action: "unkeep", note: "got old fast" });
+
+    expect(meta()).toMatchObject({ verdict: "toss", note: "got old fast" });
+    expect(existsSync(htmlFile)).toBe(false);
+  });
+
+  it("keeps the Keep's Note on an un-keep with no new Note", () => {
+    const { lab, id, meta } = labWithOne();
+    lab.recordVerdict({ id, action: "keep", note: "love the easing" });
+
+    lab.recordVerdict({ id, action: "unkeep" });
+
+    expect(meta()).toMatchObject({ verdict: "toss", note: "love the easing" });
+  });
+
+  it("refuses to un-keep an Interaction that isn't kept", () => {
+    const { lab, id, meta, htmlFile } = labWithOne();
+
+    expect(() => lab.recordVerdict({ id, action: "unkeep" })).toThrow(/not kept/i);
+    expect(meta()).toMatchObject({ verdict: null });
+    expect(existsSync(htmlFile)).toBe(true);
+  });
+
+  it("counts only the latest Verdict, Note included", () => {
+    const { lab, id, meta } = labWithOne();
+    lab.recordVerdict({ id, action: "keep", note: "love the easing" });
+
+    lab.recordVerdict({ id, action: "keep", note: "the easing, and the color too" });
+    expect(meta()).toMatchObject({ verdict: "keep", note: "the easing, and the color too" });
+
+    lab.recordVerdict({ id, action: "keep" });
+    expect(meta()).toMatchObject({ verdict: "keep", note: null });
+  });
+
+  it("treats a Toss as final", () => {
+    const { lab, id, meta } = labWithOne();
+    lab.recordVerdict({ id, action: "toss", note: "hate the color" });
+
+    expect(() => lab.recordVerdict({ id, action: "keep" })).toThrow(/tossed/i);
+    expect(meta()).toMatchObject({ verdict: "toss", note: "hate the color" });
+  });
+
+  it("refuses a Verdict for an unknown Interaction", () => {
+    const lab = openLab(makeLabDir());
+
+    expect(() => lab.recordVerdict({ id: "2026-10-30-z", action: "keep" })).toThrow(/no interaction/i);
+    expect(() => lab.recordVerdict({ id: "../../etc", action: "keep" })).toThrow(/no interaction/i);
+  });
+
+  it("refuses anything but keep, toss or unkeep, and leaves the Interaction alone", () => {
+    const { lab, id, meta, htmlFile } = labWithOne();
+
+    // Verdicts arrive as JSON from the Gallery, so the type alone doesn't guard this.
+    const verdict = "maybe" as VerdictAction;
+    expect(() => lab.recordVerdict({ id, action: verdict })).toThrow(/verdict/i);
+    expect(meta()).toMatchObject({ verdict: null });
+    expect(existsSync(htmlFile)).toBe(true);
+  });
+});
+
+describe("Kept collection", () => {
+  function register(lab: Lab, title: string, date: string): string {
+    return lab.registerInteraction({ brief: BRIEF, wildcard: title.includes("Wild"), title, date, html: HTML }).id;
+  }
+
+  it("lists every Kept Interaction with its Brief, Wildcard flag, title, date and Note, newest first", () => {
+    const lab = openLab(makeLabDir());
+    const older = register(lab, "Older keep", "2026-10-29");
+    const tossed = register(lab, "Tossed", "2026-10-29");
+    const unkept = register(lab, "Un-kept", "2026-10-30");
+    register(lab, "Still in the Inbox", "2026-10-30");
+    const newer = register(lab, "Wild keep", "2026-10-31");
+    lab.recordVerdict({ id: older, action: "keep" });
+    lab.recordVerdict({ id: tossed, action: "toss" });
+    lab.recordVerdict({ id: unkept, action: "keep" });
+    lab.recordVerdict({ id: unkept, action: "unkeep" });
+    lab.recordVerdict({ id: newer, action: "keep", note: "love the drift" });
+
+    expect(lab.kept()).toEqual([
+      { id: newer, brief: BRIEF, wildcard: true, title: "Wild keep", date: "2026-10-31", note: "love the drift" },
+      { id: older, brief: BRIEF, wildcard: false, title: "Older keep", date: "2026-10-29", note: null },
+    ]);
+  });
+
+  it("gives an Interaction's poster.png, saved into its folder by the Smoke check", () => {
+    const dir = makeLabDir();
+    const lab = openLab(dir);
+    const withPoster = register(lab, "With poster", "2026-10-30");
+    const withoutPoster = register(lab, "Without poster", "2026-10-30");
+    const png = Buffer.from("\x89PNG fake poster", "latin1");
+    writeFileSync(join(dir, "interactions", withPoster, "poster.png"), png);
+
+    expect(lab.interactionPoster(withPoster)).toEqual(png);
+    expect(lab.interactionPoster(withoutPoster)).toBeUndefined();
+    expect(lab.interactionPoster("2026-10-30-z")).toBeUndefined();
+    expect(lab.interactionPoster("../../etc")).toBeUndefined();
+  });
+
+  it("is empty in a lab with no Keeps", () => {
+    const lab = openLab(makeLabDir());
+    register(lab, "Still in the Inbox", "2026-10-30");
+
+    expect(lab.kept()).toEqual([]);
+  });
+});
+
+/** Register past Interactions, one per Brief, on consecutive days from `startDate`. */
+function registerHistory(lab: Lab, briefs: Brief[], startDate: string): void {
+  briefs.forEach((brief, i) => {
+    lab.registerInteraction({
+      brief,
+      wildcard: false,
+      title: `Past ${i}`,
+      date: addDays(startDate, i),
+      html: HTML,
+    });
+  });
+}
+
+function addDays(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+describe("Wildcard", () => {
+  it("favors Axis values with few past Briefs", () => {
+    const lab = openLab(makeLabDir());
+    // hover and click were each tried 10 times; drag never.
+    const past = Array.from({ length: 20 }, (_, i) => ({ ...BRIEF, trigger: i % 2 ? "hover" : "click" }));
+    registerHistory(lab, past, "2026-01-01");
+
+    const wildcardTriggers = Array.from(
+      { length: 30 },
+      (_, seed) => lab.pickBriefs({ date: "2026-10-30", seed }).find((p) => p.wildcard)!.brief.trigger,
+    );
+
+    // Uniform sampling would pick drag about 10 times out of 30.
+    expect(wildcardTriggers.filter((t) => t === "drag").length).toBeGreaterThanOrEqual(20);
+  });
+});
+
+const SMALL_RULES = `
+axes:
+  trigger: [hover, click, drag]
+  feel: [springy, snappy, eerie]
+`;
+
+describe("repeat avoidance", () => {
+  it("never picks a Brief identical to one from the last 30 days, nor the same Brief twice", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    // 6 of the 9 possible Briefs were used in the 29 days before the batch.
+    registerHistory(
+      lab,
+      [
+        { trigger: "hover", feel: "springy" },
+        { trigger: "hover", feel: "snappy" },
+        { trigger: "hover", feel: "eerie" },
+        { trigger: "click", feel: "springy" },
+        { trigger: "click", feel: "snappy" },
+        { trigger: "drag", feel: "eerie" },
+      ],
+      "2026-10-01",
+    );
+
+    for (let seed = 0; seed < 20; seed++) {
+      const picked = lab.pickBriefs({ date: "2026-10-30", seed });
+
+      expect(picked.map((p) => `${p.brief.trigger} · ${p.brief.feel}`).sort()).toEqual([
+        "click · eerie",
+        "drag · snappy",
+        "drag · springy",
+      ]);
+      expect(picked.filter((p) => p.wildcard)).toHaveLength(1);
+    }
+  });
+
+  it("can reuse a Brief once it is 30 days old", () => {
+    const lab = openLab(makeLabDir("axes:\n  trigger: [hover, click, drag]\n"));
+    for (const trigger of ["hover", "click", "drag"]) {
+      lab.registerInteraction({ brief: { trigger }, wildcard: false, title: trigger, date: "2026-09-30", html: HTML });
+    }
+
+    const picked = lab.pickBriefs({ date: "2026-10-30", seed: 1 });
+
+    expect(picked.map((p) => p.brief.trigger).sort()).toEqual(["click", "drag", "hover"]);
+  });
+
+  it("says so when every possible Brief was used in the last 30 days", () => {
+    const lab = openLab(makeLabDir("axes:\n  trigger: [hover, click, drag]\n"));
+    for (const trigger of ["hover", "click", "drag"]) {
+      lab.registerInteraction({ brief: { trigger }, wildcard: false, title: trigger, date: "2026-10-01", html: HTML });
+    }
+
+    expect(() => lab.pickBriefs({ date: "2026-10-30", seed: 1 })).toThrow(/30 days/);
+  });
+});
+
+describe("pick a replacement Brief", () => {
+  it("avoids the Briefs already picked today as well as those from the last 30 days", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    registerHistory(
+      lab,
+      [
+        { trigger: "hover", feel: "springy" },
+        { trigger: "hover", feel: "snappy" },
+        { trigger: "hover", feel: "eerie" },
+        { trigger: "click", feel: "springy" },
+      ],
+      "2026-10-01",
+    );
+    const pickedToday = [
+      { trigger: "click", feel: "snappy" },
+      { trigger: "click", feel: "eerie" },
+      { trigger: "drag", feel: "springy" },
+      { trigger: "drag", feel: "snappy" },
+    ];
+
+    for (let seed = 0; seed < 20; seed++) {
+      for (const wildcard of [true, false]) {
+        const replacement = lab.pickReplacement({ date: "2026-10-30", seed, wildcard, exclude: pickedToday });
+
+        expect(replacement).toEqual({ brief: { trigger: "drag", feel: "eerie" }, wildcard });
+      }
+    }
+  });
+});
+
+interface PastVerdict {
+  brief: Brief;
+  /** `null` leaves the Interaction in the Inbox. */
+  verdict: "keep" | "toss" | null;
+  wildcard?: boolean;
+}
+
+/** Register one past Interaction per entry, on consecutive days from `startDate`, and judge it. */
+function judgedHistory(lab: Lab, history: PastVerdict[], startDate = "2026-01-01"): string[] {
+  return history.map(({ brief, verdict, wildcard = false }, i) => {
+    const { id } = lab.registerInteraction({
+      brief,
+      wildcard,
+      title: `Past ${i}`,
+      date: addDays(startDate, i),
+      html: HTML,
+    });
+    if (verdict) lab.recordVerdict({ id, action: verdict });
+    return id;
+  });
+}
+
+function repeat<T>(times: number, item: T): T[] {
+  return Array.from({ length: times }, () => item);
+}
+
+/** A Weight's share of its Axis's total. */
+function share(weights: Record<string, number>, value: string): number {
+  const total = Object.values(weights).reduce((sum, w) => sum + w, 0);
+  return weights[value]! / total;
+}
+
+describe("Weights", () => {
+  it("gives every Axis value 0.5 before any Verdict", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+
+    expect(lab.weights()).toEqual({
+      trigger: { hover: 0.5, click: 0.5, drag: 0.5 },
+      feel: { springy: 0.5, snappy: 0.5, eerie: 0.5 },
+    });
+  });
+
+  it("is (keeps + 1) / (keeps + tosses + 2) for each Axis value in a judged Brief", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    judgedHistory(lab, [
+      ...repeat(3, { brief: { trigger: "hover", feel: "springy" }, verdict: "keep" as const }),
+      { brief: { trigger: "hover", feel: "snappy" }, verdict: "toss" },
+      { brief: { trigger: "click", feel: "springy" }, verdict: "toss" },
+    ]);
+
+    expect(lab.weights()).toEqual({
+      // hover: 3 Keeps, 1 Toss → 4/6. click: 1 Toss → 1/3. drag: untried → 1/2.
+      trigger: { hover: expect.closeTo(4 / 6), click: expect.closeTo(1 / 3), drag: 0.5 },
+      // springy: 3 Keeps, 1 Toss → 4/6. snappy: 1 Toss → 1/3. eerie: untried → 1/2.
+      feel: { springy: expect.closeTo(4 / 6), snappy: expect.closeTo(1 / 3), eerie: 0.5 },
+    });
+  });
+
+  it("can't drop a value to zero with one Toss, so it still gets picked", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    judgedHistory(lab, [{ brief: { trigger: "drag", feel: "eerie" }, verdict: "toss" }]);
+
+    expect(lab.weights().trigger.drag).toBeCloseTo(1 / 3);
+    const ordinaryTriggers = Array.from({ length: 30 }, (_, seed) =>
+      lab.pickBriefs({ date: "2026-10-30", seed }).filter((p) => !p.wildcard).map((p) => p.brief.trigger),
+    ).flat();
+    expect(ordinaryTriggers).toContain("drag");
+  });
+
+  it("ignores Interactions still in the Inbox", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    judgedHistory(lab, [
+      ...repeat(5, { brief: { trigger: "hover", feel: "springy" }, verdict: null }),
+      { brief: { trigger: "click", feel: "snappy" }, verdict: "keep" },
+      ...repeat(5, { brief: { trigger: "click", feel: "snappy" }, verdict: null }),
+    ]);
+
+    expect(lab.weights()).toEqual({
+      trigger: { hover: 0.5, click: expect.closeTo(2 / 3), drag: 0.5 },
+      feel: { springy: 0.5, snappy: expect.closeTo(2 / 3), eerie: 0.5 },
+    });
+  });
+
+  it("counts Wildcard Verdicts like any other", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    judgedHistory(lab, [{ brief: { trigger: "drag", feel: "eerie" }, verdict: "keep", wildcard: true }]);
+
+    expect(lab.weights().trigger.drag).toBeCloseTo(2 / 3);
+    expect(lab.weights().feel.eerie).toBeCloseTo(2 / 3);
+  });
+
+  it("follows only the latest Verdict when one changes", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    const [id] = judgedHistory(lab, [{ brief: { trigger: "hover", feel: "springy" }, verdict: "keep" }]);
+    lab.recordVerdict({ id: id!, action: "keep", note: "still love it" });
+    expect(lab.weights().trigger.hover).toBeCloseTo(2 / 3); // one Keep, not two
+
+    lab.recordVerdict({ id: id!, action: "unkeep" });
+
+    expect(lab.weights().trigger.hover).toBeCloseTo(1 / 3); // one Toss, and the Keep is gone
+    expect(lab.weights().feel.springy).toBeCloseTo(1 / 3);
+  });
+
+  it("raises a much-Tossed value to 5% of its Axis's total, leaving the others alone", () => {
+    const lab = openLab(makeLabDir("axes:\n  trigger: [hover, click, drag]\n"));
+    // 38 Tosses: (0 + 1) / (38 + 2) = 0.025, only 2.4% of 0.025 + 0.5 + 0.5.
+    judgedHistory(lab, repeat(38, { brief: { trigger: "hover" }, verdict: "toss" as const }));
+
+    const { trigger } = lab.weights();
+
+    // hover = 5% of (hover + 1)  →  hover = 0.05 / 0.95 = 1/19.
+    expect(trigger).toEqual({ hover: expect.closeTo(1 / 19), click: 0.5, drag: 0.5 });
+    expect(share(trigger!, "hover")).toBeCloseTo(0.05);
+  });
+
+  it("keeps every value at 5% or more even when several need raising", () => {
+    const lab = openLab(makeLabDir("axes:\n  trigger: [hover, click, drag]\n"));
+    judgedHistory(lab, [
+      ...repeat(38, { brief: { trigger: "hover" }, verdict: "toss" as const }),
+      ...repeat(38, { brief: { trigger: "click" }, verdict: "toss" as const }),
+      ...repeat(40, { brief: { trigger: "drag" }, verdict: "keep" as const }),
+    ]);
+
+    const { trigger } = lab.weights();
+
+    // drag = 41/42 and stays put; hover and click each end up at exactly 5% of the total.
+    expect(trigger!.drag).toBeCloseTo(41 / 42);
+    expect(share(trigger!, "hover")).toBeCloseTo(0.05);
+    expect(share(trigger!, "click")).toBeCloseTo(0.05);
+  });
+
+  it("leaves an Axis with more than 20 untried values evenly weighted", () => {
+    const values = Array.from({ length: 25 }, (_, i) => `v${i}`);
+    const lab = openLab(makeLabDir(`axes:\n  shape: [${values.join(", ")}]\n`));
+
+    expect(Object.values(lab.weights().shape!)).toEqual(repeat(25, 0.5));
+  });
+
+  it("reports, for Brief stats, each value's Weight and share and which values the floor holds up", () => {
+    const lab = openLab(makeLabDir("axes:\n  trigger: [hover, click, drag]\n"));
+    judgedHistory(lab, repeat(38, { brief: { trigger: "hover" }, verdict: "toss" as const }));
+
+    expect(lab.briefStats()).toEqual({
+      trigger: {
+        floorShare: 0.05,
+        values: {
+          // hover = 1/19 = 5% of 1/19 + 0.5 + 0.5; click and drag split the other 95%.
+          hover: { weight: expect.closeTo(1 / 19), share: expect.closeTo(0.05), atFloor: true },
+          click: { weight: 0.5, share: expect.closeTo(0.475), atFloor: false },
+          drag: { weight: 0.5, share: expect.closeTo(0.475), atFloor: false },
+        },
+      },
+    });
+  });
+
+  it("reports an even floor share, and no value held up by it, on an untried Axis with more than 20 values", () => {
+    const values = Array.from({ length: 25 }, (_, i) => `v${i}`);
+    const lab = openLab(makeLabDir(`axes:\n  shape: [${values.join(", ")}]\n`));
+
+    const { shape } = lab.briefStats();
+
+    expect(shape!.floorShare).toBeCloseTo(1 / 25);
+    expect(Object.values(shape!.values).filter((v) => v.atFloor)).toEqual([]);
+  });
+
+  it("steers the non-Wildcard Briefs, and leaves the Wildcard alone", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    const feels = ["springy", "snappy", "eerie"];
+    // Long before the batch, so repeat avoidance doesn't come into it. Every trigger was
+    // tried 20 times: drag was always kept, hover and click always tossed.
+    const history = ["drag", "hover", "click"].flatMap((trigger) =>
+      Array.from({ length: 20 }, (_, i) => ({
+        brief: { trigger, feel: feels[i % 3]! },
+        verdict: trigger === "drag" ? ("keep" as const) : ("toss" as const),
+      })),
+    );
+    judgedHistory(lab, history, "2025-01-01");
+    // drag ≈ 0.95 against ≈ 0.05 each for hover and click: about 90% of the trigger weight.
+    expect(share(lab.weights().trigger!, "drag")).toBeGreaterThan(0.85);
+
+    const batches = Array.from({ length: 30 }, (_, seed) => lab.pickBriefs({ date: "2026-10-30", seed }));
+    const triggers = (wildcard: boolean) =>
+      batches.flatMap((batch) => batch.filter((p) => p.wildcard === wildcard).map((p) => p.brief.trigger));
+
+    // 60 ordinary Briefs: uniform sampling would give about 20 drags, the Weights about 54.
+    expect(triggers(false).filter((t) => t === "drag").length).toBeGreaterThanOrEqual(45);
+    // 30 Wildcards: every trigger was tried equally often, so drag gets no special favor.
+    expect(triggers(true).filter((t) => t === "drag").length).toBeLessThan(20);
+  });
+
+  it("ignores past Briefs' values that are no longer in the rules file", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    judgedHistory(lab, [{ brief: { trigger: "scroll", feel: "springy", palette: "neon" }, verdict: "keep" }]);
+
+    expect(lab.weights()).toEqual({
+      trigger: { hover: 0.5, click: 0.5, drag: 0.5 },
+      feel: { springy: expect.closeTo(2 / 3), snappy: 0.5, eerie: 0.5 },
+    });
+  });
+});
+
+describe("Taste context", () => {
+  type Judgement = { verdict: "keep" | "toss" | "unkeep" | null; note?: string | null };
+
+  /** Register one Interaction per day from `startDate`, give the i-th one `judgements[i]`, return the ids. */
+  function judged(lab: Lab, judgements: Judgement[], startDate: string): string[] {
+    return judgements.map(({ verdict, note = null }, i) => {
+      const { id } = lab.registerInteraction({
+        brief: { ...BRIEF, feel: `feel ${i}` },
+        wildcard: false,
+        title: `Interaction ${i}`,
+        date: addDays(startDate, i),
+        html: HTML,
+      });
+      if (verdict === "unkeep") lab.recordVerdict({ id, action: "keep", note: "first thought" });
+      if (verdict) lab.recordVerdict({ id, action: verdict, note });
+      return id;
+    });
+  }
+
+  it("returns the Briefs and Notes of at most the 10 most recent Keeps, newest first", () => {
+    const lab = openLab(makeLabDir());
+    judged(
+      lab,
+      Array.from({ length: 12 }, (_, i) => ({ verdict: "keep" as const, note: i % 2 ? `note ${i}` : null })),
+      "2026-10-01",
+    );
+
+    const { keeps } = lab.tasteContext({ date: "2026-10-30" });
+
+    expect(keeps).toHaveLength(10);
+    expect(keeps[0]).toEqual({
+      id: "2026-10-12-a",
+      title: "Interaction 11",
+      brief: { ...BRIEF, feel: "feel 11" },
+      note: "note 11",
+    });
+    expect(keeps[1]).toMatchObject({ id: "2026-10-11-a", note: null });
+    expect(keeps.at(-1)).toMatchObject({ id: "2026-10-03-a", title: "Interaction 2" });
+  });
+
+  it("returns the Notes of at most the 10 most recent Tosses that have a Note, skipping the rest", () => {
+    const lab = openLab(makeLabDir());
+    // 12 Tosses with a Note, and the newest 3 Tosses have no Note (empty or blank counts as none).
+    judged(
+      lab,
+      [
+        ...Array.from({ length: 12 }, (_, i) => ({ verdict: "toss" as const, note: `note ${i}` })),
+        { verdict: "toss", note: null },
+        { verdict: "toss", note: "" },
+        { verdict: "toss", note: "   " },
+      ],
+      "2026-10-01",
+    );
+
+    const { tossNotes } = lab.tasteContext({ date: "2026-10-30" });
+
+    expect(tossNotes).toHaveLength(10);
+    expect(tossNotes[0]).toEqual({
+      id: "2026-10-12-a",
+      title: "Interaction 11",
+      brief: { ...BRIEF, feel: "feel 11" },
+      note: "note 11",
+    });
+    expect(tossNotes.map((t) => t.note).at(-1)).toBe("note 2");
+  });
+
+  it("returns the titles of every Interaction from the last 30 days only, newest first", () => {
+    const lab = openLab(makeLabDir());
+    // One a day from 2026-09-29 to 2026-10-31: kept, tossed and Inbox alike.
+    judged(
+      lab,
+      Array.from({ length: 33 }, (_, i) => ({ verdict: (["keep", "toss", null] as const)[i % 3] })),
+      "2026-09-29",
+    );
+
+    const { recentTitles } = lab.tasteContext({ date: "2026-10-30" });
+
+    // 2026-10-01 (29 days before) through 2026-10-30; not 2026-09-30 (30 days) nor 2026-10-31 (after).
+    expect(recentTitles).toHaveLength(30);
+    expect(recentTitles[0]).toBe("Interaction 31");
+    expect(recentTitles.at(-1)).toBe("Interaction 2");
+  });
+
+  it("uses only the latest Verdict on each Interaction, counting an un-kept one as a Toss", () => {
+    const lab = openLab(makeLabDir());
+    const [rekept, unkeptWithNote, unkeptSilently] = judged(
+      lab,
+      [
+        { verdict: "keep", note: "second thought" },
+        { verdict: "unkeep", note: "got old fast" },
+        { verdict: "unkeep", note: null },
+      ],
+      "2026-10-01",
+    );
+    // `judged` already kept the first one; keep it again with a fresh Note.
+    lab.recordVerdict({ id: rekept, action: "keep", note: "even better on a phone" });
+
+    const { keeps, tossNotes } = lab.tasteContext({ date: "2026-10-30" });
+
+    expect(keeps).toEqual([expect.objectContaining({ id: rekept, note: "even better on a phone" })]);
+    // Un-keeping without a new Note keeps the Keep's Note, so the un-kept one still counts.
+    expect(tossNotes).toEqual([
+      expect.objectContaining({ id: unkeptSilently, note: "first thought" }),
+      expect.objectContaining({ id: unkeptWithNote, note: "got old fast" }),
+    ]);
+  });
+
+  it("orders Keeps and Tosses by when their Verdict was given, not by the Interaction's date", () => {
+    const dir = makeLabDir();
+    const lab = openLab(dir);
+    const [older, newer, olderTossed, newerTossed] = judged(
+      lab,
+      [{ verdict: null }, { verdict: null }, { verdict: null }, { verdict: null }],
+      "2026-10-01",
+    );
+    vi.useFakeTimers({ toFake: ["Date"] });
+    // The newer Interactions get their Verdicts first; the older ones a day later.
+    vi.setSystemTime(new Date("2026-10-20T09:00:00Z"));
+    lab.recordVerdict({ id: newer!, action: "keep" });
+    lab.recordVerdict({ id: newerTossed!, action: "toss", note: "too busy" });
+    vi.setSystemTime(new Date("2026-10-21T09:00:00Z"));
+    lab.recordVerdict({ id: older!, action: "keep" });
+    lab.recordVerdict({ id: olderTossed!, action: "toss", note: "too slow" });
+
+    const { keeps, tossNotes } = lab.tasteContext({ date: "2026-10-30" });
+
+    expect(keeps.map((k) => k.id)).toEqual([older, newer]);
+    expect(tossNotes.map((t) => t.id)).toEqual([olderTossed, newerTossed]);
+  });
+
+  it("puts Verdicts recorded without a time after timed ones, in Interaction order", () => {
+    const dir = makeLabDir();
+    const lab = openLab(dir);
+    const [timed, untimedOld, untimedNew] = judged(
+      lab,
+      [{ verdict: "keep" }, { verdict: "keep" }, { verdict: "keep" }],
+      "2026-10-01",
+    );
+    // Metadata written before Verdicts carried a time.
+    for (const id of [untimedOld!, untimedNew!]) {
+      const file = join(dir, "interactions", id, "meta.json");
+      const { verdictAt: _, ...meta } = JSON.parse(readFileSync(file, "utf8"));
+      writeFileSync(file, JSON.stringify(meta));
+    }
+
+    const { keeps } = lab.tasteContext({ date: "2026-10-30" });
+
+    expect(keeps.map((k) => k.id)).toEqual([timed, untimedNew, untimedOld]);
+  });
+
+  it("is empty in a lab with no Interactions", () => {
+    expect(openLab(makeLabDir()).tasteContext({ date: "2026-10-30" })).toEqual({
+      keeps: [],
+      tossNotes: [],
+      recentTitles: [],
+    });
+  });
+});

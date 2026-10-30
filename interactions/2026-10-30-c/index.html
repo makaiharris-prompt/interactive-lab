@@ -1,0 +1,170 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lantern Menu</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    touch-action: none; user-select: none; -webkit-user-select: none;
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    background:
+      radial-gradient(1px 1px at 12% 18%, #fff8 50%, transparent 51%),
+      radial-gradient(1px 1px at 27% 9%, #fff6 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 44% 14%, #fff9 50%, transparent 51%),
+      radial-gradient(1px 1px at 63% 6%, #fff7 50%, transparent 51%),
+      radial-gradient(1px 1px at 78% 20%, #fff5 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 91% 11%, #fff8 50%, transparent 51%),
+      radial-gradient(1px 1px at 6% 31%, #fff4 50%, transparent 51%),
+      radial-gradient(120% 70% at 50% 110%, #c8643a 0%, #6b2f4a 38%, #2a1a40 66%, #0f0d22 100%);
+  }
+  .hills {
+    position: fixed; left: -10%; right: -10%; bottom: -30vh; height: 48vh;
+    background: #120c1c; border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+    box-shadow: 0 -2px 30px #ff9a5a22;
+  }
+  .hills.back { bottom: -26vh; left: 20%; right: -40%; background: #1d1228; }
+
+  nav { position: fixed; inset: 0; }
+  nav ul { list-style: none; margin: 0; padding: 0; }
+  .lantern {
+    --near: 0; --dx: 0; --dy: 0;
+    position: absolute; left: var(--x); top: var(--y);
+    width: clamp(64px, 13vw, 116px); margin-left: calc(clamp(64px, 13vw, 116px) / -2);
+    transform: translate(calc(var(--dx) * 1px), calc(var(--dy) * 1px)) scale(calc(1 + var(--near) * 0.16));
+    transition: transform 1.8s cubic-bezier(.17,.84,.24,1);
+  }
+  .bob { animation: bob var(--t, 7s) ease-in-out var(--d, 0s) infinite alternate; }
+  @keyframes bob {
+    0% { transform: translateY(-6px) rotate(-2.5deg); }
+    100% { transform: translateY(8px) rotate(2.5deg); }
+  }
+  .lantern a {
+    display: block; text-decoration: none; color: inherit; outline: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .lantern a::before { /* string */
+    content: ""; position: absolute; left: 50%; bottom: 100%; width: 1px; height: 120vh;
+    background: linear-gradient(#0000, #f3c58a40); transform: translateX(-50%);
+  }
+  .shade {
+    position: relative; aspect-ratio: 0.82; border-radius: 42% 42% 38% 38% / 30% 30% 26% 26%;
+    background:
+      repeating-linear-gradient(0deg, #0000 0 11%, #7a2a1626 11% 12.5%),
+      radial-gradient(60% 55% at 50% 52%, #fff2c4 0%, #ffb14a 34%, #e0582a 72%, #8a2618 100%);
+    filter: brightness(calc(0.62 + var(--near) * 0.55)) saturate(calc(0.85 + var(--near) * 0.3));
+    box-shadow: 0 0 calc(18px + var(--near) * 70px) calc(var(--near) * 14px) #ff9a4a88,
+                inset 0 -8px 14px #5a140c66;
+    transition: filter 1.2s ease, box-shadow 1.2s ease;
+  }
+  .shade::before, .shade::after { /* caps */
+    content: ""; position: absolute; left: 30%; right: 30%; height: 7%;
+    background: #2a1610; border-radius: 3px;
+  }
+  .shade::before { top: -3%; }
+  .shade::after { bottom: -3%; }
+  .label {
+    display: block; margin-top: 18px; text-align: center;
+    font-size: clamp(13px, 1.8vw, 17px); letter-spacing: calc(0.08em + var(--near) * 0.14em);
+    color: #f6dcc0; opacity: calc(0.45 + var(--near) * 0.55);
+    text-shadow: 0 0 12px #ff9a4a88;
+    transition: opacity 1s ease, letter-spacing 1.4s cubic-bezier(.17,.84,.24,1);
+  }
+  .lantern a[aria-current="page"] .label { color: #fff; opacity: 1; }
+  .lantern a[aria-current="page"] .label::after {
+    content: ""; display: block; width: 6px; height: 6px; margin: 8px auto 0;
+    border-radius: 50%; background: #ffd27a; box-shadow: 0 0 10px #ffb14a;
+  }
+  .lantern a:focus-visible .label { text-decoration: underline; }
+
+  .ember {
+    position: fixed; width: 3px; height: 3px; border-radius: 50%;
+    background: #ffc47a; box-shadow: 0 0 6px #ff9a4a; opacity: 0;
+    animation: rise var(--t) linear var(--d) infinite;
+  }
+  @keyframes rise {
+    0% { transform: translate(0, 0); opacity: 0; }
+    15% { opacity: 0.8; }
+    100% { transform: translate(var(--sway), -70vh); opacity: 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bob, .ember { animation: none; }
+    .ember { display: none; }
+    .lantern { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="hills back"></div>
+<div class="hills"></div>
+<nav aria-label="Main">
+  <ul>
+    <li class="lantern" style="--x:14%; --y:34%"><div class="bob" style="--t:6.5s; --d:-1s"><a href="#home" aria-current="page"><div class="shade"></div><span class="label">Home</span></a></div></li>
+    <li class="lantern" style="--x:32%; --y:24%"><div class="bob" style="--t:8s; --d:-3s"><a href="#work"><div class="shade"></div><span class="label">Work</span></a></div></li>
+    <li class="lantern" style="--x:50%; --y:38%"><div class="bob" style="--t:7s; --d:-5s"><a href="#studio"><div class="shade"></div><span class="label">Studio</span></a></div></li>
+    <li class="lantern" style="--x:68%; --y:22%"><div class="bob" style="--t:9s; --d:-2s"><a href="#journal"><div class="shade"></div><span class="label">Journal</span></a></div></li>
+    <li class="lantern" style="--x:86%; --y:32%"><div class="bob" style="--t:7.5s; --d:-4s"><a href="#contact"><div class="shade"></div><span class="label">Contact</span></a></div></li>
+  </ul>
+</nav>
+<script>
+  // Only bookkeeping lives here: the pointer sets a few CSS variables per lantern,
+  // and CSS transitions do all the drawing and easing.
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+  const lanterns = [...document.querySelectorAll(".lantern")];
+  const links = lanterns.map((l) => l.querySelector("a"));
+
+  for (let i = 0; i < 16; i++) {
+    const e = document.createElement("span");
+    e.className = "ember";
+    e.style.cssText = `left:${5 + Math.random() * 90}%; top:${70 + Math.random() * 30}%;` +
+      `--t:${9 + Math.random() * 8}s; --d:${-Math.random() * 14}s; --sway:${(Math.random() - 0.5) * 120}px`;
+    document.body.appendChild(e);
+  }
+
+  function restCenter(l) {
+    return [l.offsetLeft + l.offsetWidth / 2, l.offsetTop + l.offsetHeight * 0.35];
+  }
+
+  function attract(x, y) {
+    const reach = Math.max(innerWidth, innerHeight) * 0.32;
+    for (const l of lanterns) {
+      const [cx, cy] = restCenter(l);
+      const d = Math.hypot(x - cx, y - cy);
+      const near = Math.max(0, 1 - d / reach);
+      const ease = near * near * (3 - 2 * near);
+      l.style.setProperty("--near", ease.toFixed(3));
+      if (reduce.matches) {
+        l.style.setProperty("--dx", 0);
+        l.style.setProperty("--dy", 0);
+      } else {
+        l.style.setProperty("--dx", ((x - cx) * ease * 0.3).toFixed(1));
+        l.style.setProperty("--dy", ((y - cy) * ease * 0.3 - ease * 26).toFixed(1));
+      }
+    }
+  }
+
+  function release() {
+    for (const l of lanterns) {
+      l.style.setProperty("--near", 0);
+      l.style.setProperty("--dx", 0);
+      l.style.setProperty("--dy", 0);
+    }
+  }
+
+  addEventListener("pointermove", (e) => attract(e.clientX, e.clientY));
+  addEventListener("pointerdown", (e) => attract(e.clientX, e.clientY));
+  document.documentElement.addEventListener("pointerleave", release);
+  addEventListener("pointerup", (e) => { if (e.pointerType !== "mouse") release(); });
+
+  links.forEach((a) => a.addEventListener("click", (e) => {
+    e.preventDefault();
+    links.forEach((b) => b.removeAttribute("aria-current"));
+    a.setAttribute("aria-current", "page");
+  }));
+  addEventListener("resize", release);
+</script>
+</body>
+</html>

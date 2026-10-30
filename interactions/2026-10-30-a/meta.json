@@ -1,0 +1,13 @@
+{
+  "brief": {
+    "trigger": "scroll",
+    "subject": "button",
+    "technique": "three.js scene",
+    "feel": "snappy"
+  },
+  "wildcard": false,
+  "title": "Keycap Rolodex",
+  "date": "2026-10-30",
+  "verdict": null,
+  "note": null
+}
