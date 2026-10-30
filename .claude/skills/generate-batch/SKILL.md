@@ -46,12 +46,12 @@ npm run --silent lab -- pick-briefs --date $DATE
 npm run --silent lab -- taste-context --date $DATE
 ```
 
-and read `hardConstraints` and `libraries` in `rules.yaml`.
+and read `styleGuide`, `hardConstraints` and `libraries` in `rules.yaml`.
 
 - `pick-briefs` prints 3 `{brief, wildcard}` objects, exactly one with `wildcard: true`. Number them slots 1–3 in the order printed. Keep a running list, **picked today**, of every Brief you are given this run; it starts with these 3.
 - The Taste context's `about` field says how to use each part: lean into what Keep Notes praise, steer clear of what Toss Notes criticise, and give each Interaction an idea and a title that differ from everything in `recentTitles`.
 
-Done when you hold 3 Briefs, the Taste context, the Hard constraints and the allow-list.
+Done when you hold 3 Briefs, the Taste context, the Style guide, the Hard constraints and the allow-list.
 
 ## 5. Make each slot (repeat for slots 1, 2, 3)
 
@@ -59,7 +59,7 @@ Each slot ends in exactly one of two states: **registered** (an id from step 5d)
 
 ### 5a. Write the Interaction
 
-Write `drafts/<slot>/index.html` (e.g. `drafts/1/index.html`) and choose a title of 2–5 words. Build from the Brief: one value per Axis, e.g. `trigger: drag · subject: card · technique: SDF · feel: springy`. Every Axis value should be visible in the result: the trigger drives it, the subject is what you see, the technique is how it is drawn, the feel is how it moves. A `wildcard: true` Brief is the day's deliberate surprise: honour its odd combination fully.
+Write `drafts/<slot>/index.html` (e.g. `drafts/1/index.html`) and choose a title of 2–5 words. Build from the Brief: one value per Axis, e.g. `trigger: drag · subject: card · technique: SDF · feel: springy`. Every Axis value should be visible in the result: the trigger drives it, the subject is what you see, the technique is how it is drawn, the feel is how it moves, the look is its palette and surface, and the inspiration is the React Bits component whose core mechanic you riff on (make a new sibling of it, never a copy). Follow the Style guide in `rules.yaml` for every Interaction, the Wildcard included: it sets the overall aesthetic, and the Brief chooses within it. Where the Style guide and the Taste context's Notes disagree, the Notes win: they are the user's latest word. A `wildcard: true` Brief is the day's deliberate surprise: honour its odd combination fully.
 
 Meet every Hard constraint in `rules.yaml`. What they mean in practice here:
 

@@ -40,6 +40,64 @@ axes:
     - glitchy
     - tactile
     - eerie
+  look:
+    - monochrome
+    - duotone
+    - single accent on near-black
+    - soft gradient glow
+    - grain and dither
+    - frosted glass
+    - fine line / wireframe
+    - type-led
+  # A React Bits component (reactbits.dev) to riff on: its core mechanic is the
+  # starting point, and the other Axes reshape it into something new. The full
+  # catalogue has ~200; swap any in. Keep it to 20 or fewer values, or the 5%
+  # floor becomes an even share and Weights stop steering this Axis.
+  inspiration:
+    - Magnet (elements pulled toward the cursor)
+    - Click Spark (sparks burst from each click)
+    - Sticker Peel (a sticker peeling from its corner)
+    - Pixel Trail (the cursor leaves a fading pixel trail)
+    - Meta Balls (blobs that merge like liquid)
+    - Ripple Distortion (ripples that warp what's beneath)
+    - Halftone Reveal (an image revealed through halftone dots)
+    - Silk (slow, flowing fabric-like light)
+    - Dither (dithered, retro-shaded gradients)
+    - Magnet Lines (a field of lines that turn toward the cursor)
+    - Ferrofluid (spiky fluid drawn toward the cursor)
+    - Dot Grid (a dot grid that reacts to the cursor)
+    - Text Pressure (letters that swell near the cursor)
+    - Decrypted Text (text that scrambles into place)
+    - Falling Text (letters that drop with physics)
+    - Elastic Slider (a slider that stretches past its ends)
+    - Card Swap (a stack of cards that cycles)
+    - Shredder (something shredded into strips)
+    - Tear Ticket (a ticket torn along its perforation)
+    - Sling Button (a button pulled back and let fly)
+
+# Style guide: the overall aesthetic every Interaction aims for, passed to Claude
+# as written. Unlike Hard constraints, these are taste, not pass/fail rules.
+styleGuide:
+  - >-
+    Minimal and modern: one idea, done with restraint and polish. Lots of empty
+    space, few elements, nothing decorative that the idea doesn't need.
+  - >-
+    Dark by default (near-black, not pure #000), with a tight palette: one or two
+    colours plus greys. Colour comes from light, glow and gradient rather than
+    flat fills.
+  - >-
+    Clean sans-serif type (system-ui or Inter-like), small and well spaced. No
+    emoji, no clip-art icons, no rainbow palettes, no busy UI chrome.
+  - >-
+    Motion is the material: smooth easing, springs and physics that feel
+    considered. Subtle beats loud; texture (grain, dither, soft noise) beats
+    clutter.
+  - >-
+    Each Brief names a React Bits component to riff on (the inspiration Axis).
+    Take its core mechanic as the seed and push it somewhere new through the
+    other Axes. The result should feel like a sibling of that component, not a
+    copy: different subject, a twist on the mechanic, its own idea. Match
+    React Bits' level of craft.
 
 # Hard constraints: prose rules every Interaction must follow, passed to Claude as written.
 hardConstraints:
