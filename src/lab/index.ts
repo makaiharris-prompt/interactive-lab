@@ -35,13 +35,22 @@ export interface PickReplacementOptions extends PickBriefsOptions {
   exclude: Brief[];
 }
 
-export interface NewInteraction {
+/** What an Interaction is, apart from its files and Verdict: fixed when it is registered. */
+export interface InteractionDetails {
   brief: Brief;
   wildcard: boolean;
   /** A short title, written by Claude. */
   title: string;
   /** The Daily batch's date, `YYYY-MM-DD`. */
   date: string;
+}
+
+/** A stored Interaction, as the lab lists it. */
+export interface InteractionSummary extends InteractionDetails {
+  id: string;
+}
+
+export interface NewInteraction extends InteractionDetails {
   /** The Interaction itself: one self-contained HTML file. */
   html: string;
   /** The thumbnail the Smoke check took, saved as the Interaction's `poster.png`. */
@@ -49,21 +58,10 @@ export interface NewInteraction {
 }
 
 /** An Interaction with no Verdict yet. */
-export interface InboxItem {
-  id: string;
-  brief: Brief;
-  wildcard: boolean;
-  title: string;
-  date: string;
-}
+export type InboxItem = InteractionSummary;
 
 /** An Interaction in the Kept collection: one with a Keep Verdict. */
-export interface KeptItem {
-  id: string;
-  brief: Brief;
-  wildcard: boolean;
-  title: string;
-  date: string;
+export interface KeptItem extends InteractionSummary {
   /** The Note saved with the Keep, if any. */
   note: string | null;
 }
@@ -101,10 +99,7 @@ export interface TasteContextOptions {
 }
 
 /** A recent Keep: what it was built from, and what the user said about it. */
-export interface TasteKeep {
-  id: string;
-  title: string;
-  brief: Brief;
+export interface TasteKeep extends Pick<InteractionSummary, "id" | "title" | "brief"> {
   note: string | null;
 }
 
@@ -119,10 +114,7 @@ export interface TasteContext {
 }
 
 /** A recent Toss with a Note: what the user disliked about it. */
-export interface TasteTossNote {
-  id: string;
-  title: string;
-  brief: Brief;
+export interface TasteTossNote extends Pick<InteractionSummary, "id" | "title" | "brief"> {
   note: string;
 }
 
@@ -181,6 +173,11 @@ export interface Lab {
   tasteContext(options: TasteContextOptions): TasteContext;
 }
 
+/** Just the summary fields, so nothing else stored in `meta.json` leaks out. */
+function summary({ id, brief, wildcard, title, date }: InteractionSummary): InteractionSummary {
+  return { id, brief, wildcard, title, date };
+}
+
 export function openLab(labDir: string): Lab {
   const storage = new Storage(labDir);
 
@@ -191,7 +188,7 @@ export function openLab(labDir: string): Lab {
   function briefPicker(date: string, seed: string | number, exclude: readonly Brief[]) {
     const { axes } = readRules(labDir);
     const random = seededRandom(`${date}\u0000${seed}`);
-    const history = storage.ids().map((id) => storage.readMeta(id));
+    const history = storage.all();
     const pastBriefs = history.map((past) => past.brief);
     const weights = computeWeights(axes, history);
 
@@ -238,20 +235,14 @@ export function openLab(labDir: string): Lab {
     },
 
     inbox() {
-      return storage.ids().flatMap((id) => {
-        const { brief, wildcard, title, date, verdict } = storage.readMeta(id);
-        return verdict ? [] : [{ id, brief, wildcard, title, date }];
-      });
+      return storage.all().flatMap(({ verdict, ...item }) => (verdict ? [] : [summary(item)]));
     },
 
     kept() {
       return storage
-        .ids()
+        .all()
         .reverse()
-        .flatMap((id) => {
-          const { brief, wildcard, title, date, verdict, note } = storage.readMeta(id);
-          return verdict === "keep" ? [{ id, brief, wildcard, title, date, note }] : [];
-        });
+        .flatMap(({ verdict, note, ...item }) => (verdict === "keep" ? [{ ...summary(item), note }] : []));
     },
 
     interactionHtml(id) {
@@ -280,14 +271,11 @@ export function openLab(labDir: string): Lab {
     },
 
     weights() {
-      return computeWeights(readRules(labDir).axes, storage.ids().map((id) => storage.readMeta(id)));
+      return computeWeights(readRules(labDir).axes, storage.all());
     },
 
     tasteContext({ date }) {
-      const newestFirst = storage
-        .ids()
-        .reverse()
-        .map((id) => ({ id, ...storage.readMeta(id) }));
+      const newestFirst = storage.all().reverse();
       // Newest Verdict first; Verdicts recorded before they carried a time come after, newest Interaction first.
       const newestVerdictFirst = newestFirst
         .slice()

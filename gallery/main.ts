@@ -1,4 +1,4 @@
-import type { InboxItem, KeptItem, Verdict, VerdictInput, Weights } from "../src/lab/index.ts";
+import type { InboxItem, InteractionSummary, KeptItem, Verdict, VerdictInput, Weights } from "../src/lab/index.ts";
 
 const app = document.querySelector<HTMLElement>("#app")!;
 
@@ -28,7 +28,7 @@ function wildcardTag(): HTMLElement {
   return el("span", { className: "wildcard", textContent: "Wildcard", title: WILDCARD_EXPLANATION });
 }
 
-function briefView(item: InboxItem | KeptItem): HTMLElement {
+function briefView(item: InteractionSummary): HTMLElement {
   return el(
     "dl",
     { className: "brief" },
@@ -40,7 +40,7 @@ function briefView(item: InboxItem | KeptItem): HTMLElement {
 }
 
 /** An Interaction running live. Every live Interaction in the Gallery comes from here. */
-function interactionFrame(item: InboxItem | KeptItem, className: string): HTMLIFrameElement {
+function interactionFrame(item: InteractionSummary, className: string): HTMLIFrameElement {
   const frame = el("iframe", { className, title: item.title, src: interactionUrl(item.id) });
   // No allow-same-origin: an Interaction can run scripts but can't reach the Gallery.
   frame.setAttribute("sandbox", "allow-scripts");
@@ -48,7 +48,7 @@ function interactionFrame(item: InboxItem | KeptItem, className: string): HTMLIF
 }
 
 /** Title, Wildcard label, date and Brief, shown under an Interaction that runs large. */
-function captionView(item: InboxItem | KeptItem, extra: HTMLElement[] = []): HTMLElement {
+function captionView(item: InteractionSummary, extra: HTMLElement[] = []): HTMLElement {
   return el("section", { className: "caption" }, [
     el("div", { className: "caption-head" }, [
       el("h2", { textContent: item.title }),
@@ -63,7 +63,7 @@ function captionView(item: InboxItem | KeptItem, extra: HTMLElement[] = []): HTM
   ]);
 }
 
-function copyButton(item: InboxItem | KeptItem): HTMLButtonElement {
+function copyButton(item: InteractionSummary): HTMLButtonElement {
   return el("button", {
     type: "button",
     className: "copy",
@@ -244,7 +244,7 @@ async function judge(verdict: Verdict): Promise<void> {
   setStatus(`${verdict === "keep" ? "Kept" : "Tossed"} “${item.title}”`);
 }
 
-async function copySource(item: InboxItem | KeptItem): Promise<void> {
+async function copySource(item: InteractionSummary): Promise<void> {
   try {
     const response = await fetch(sourceUrl(item.id));
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);

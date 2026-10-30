@@ -8,13 +8,10 @@
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Verdict } from "./index.ts";
+import type { InteractionDetails, Verdict } from "./index.ts";
 
-export interface Meta {
-  brief: Record<string, string>;
-  wildcard: boolean;
-  title: string;
-  date: string;
+/** What `meta.json` holds. */
+export interface Meta extends InteractionDetails {
   /** `null` while the Interaction is in the Inbox. */
   verdict: Verdict | null;
   note: string | null;
@@ -47,6 +44,11 @@ export class Storage {
   /** Whether `id` names a stored Interaction (with or without its HTML). */
   has(id: string): boolean {
     return ID.test(id) && existsSync(join(this.folder(id), "meta.json"));
+  }
+
+  /** Every stored Interaction's id and metadata, oldest first (by date, then position in its batch). */
+  all(): (Meta & { id: string })[] {
+    return this.ids().map((id) => ({ id, ...this.readMeta(id) }));
   }
 
   readMeta(id: string): Meta {
