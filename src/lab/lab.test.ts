@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { openLab, type Brief, type Lab } from "./index.ts";
+import { openLab, type Brief, type Lab, type VerdictAction } from "./index.ts";
 
 const RULES = `
 axes:
@@ -163,7 +163,7 @@ describe("record a Verdict", () => {
   it("saves a Keep and its Note to the metadata and takes the Interaction out of the Inbox", () => {
     const { lab, id, meta } = labWithOne();
 
-    lab.recordVerdict({ id, verdict: "keep", note: "love the easing" });
+    lab.recordVerdict({ id, action: "keep", note: "love the easing" });
 
     expect(meta()).toMatchObject({ verdict: "keep", note: "love the easing", title: "Springy card" });
     expect(lab.inbox()).toEqual([]);
@@ -173,7 +173,7 @@ describe("record a Verdict", () => {
   it("deletes the HTML on a Toss and keeps the metadata", () => {
     const { lab, id, meta, htmlFile } = labWithOne();
 
-    lab.recordVerdict({ id, verdict: "toss", note: "hate the color" });
+    lab.recordVerdict({ id, action: "toss", note: "hate the color" });
 
     expect(existsSync(htmlFile)).toBe(false);
     expect(lab.interactionHtml(id)).toBeUndefined();
@@ -191,9 +191,9 @@ describe("record a Verdict", () => {
 
   it("turns a Keep into a Toss on un-keep, deleting the HTML", () => {
     const { lab, id, meta, htmlFile } = labWithOne();
-    lab.recordVerdict({ id, verdict: "keep", note: "love the easing" });
+    lab.recordVerdict({ id, action: "keep", note: "love the easing" });
 
-    lab.recordVerdict({ id, verdict: "unkeep", note: "got old fast" });
+    lab.recordVerdict({ id, action: "unkeep", note: "got old fast" });
 
     expect(meta()).toMatchObject({ verdict: "toss", note: "got old fast" });
     expect(existsSync(htmlFile)).toBe(false);
@@ -201,9 +201,9 @@ describe("record a Verdict", () => {
 
   it("keeps the Keep's Note on an un-keep with no new Note", () => {
     const { lab, id, meta } = labWithOne();
-    lab.recordVerdict({ id, verdict: "keep", note: "love the easing" });
+    lab.recordVerdict({ id, action: "keep", note: "love the easing" });
 
-    lab.recordVerdict({ id, verdict: "unkeep" });
+    lab.recordVerdict({ id, action: "unkeep" });
 
     expect(meta()).toMatchObject({ verdict: "toss", note: "love the easing" });
   });
@@ -211,43 +211,43 @@ describe("record a Verdict", () => {
   it("refuses to un-keep an Interaction that isn't kept", () => {
     const { lab, id, meta, htmlFile } = labWithOne();
 
-    expect(() => lab.recordVerdict({ id, verdict: "unkeep" })).toThrow(/not kept/i);
+    expect(() => lab.recordVerdict({ id, action: "unkeep" })).toThrow(/not kept/i);
     expect(meta()).toMatchObject({ verdict: null });
     expect(existsSync(htmlFile)).toBe(true);
   });
 
   it("counts only the latest Verdict, Note included", () => {
     const { lab, id, meta } = labWithOne();
-    lab.recordVerdict({ id, verdict: "keep", note: "love the easing" });
+    lab.recordVerdict({ id, action: "keep", note: "love the easing" });
 
-    lab.recordVerdict({ id, verdict: "keep", note: "the easing, and the color too" });
+    lab.recordVerdict({ id, action: "keep", note: "the easing, and the color too" });
     expect(meta()).toMatchObject({ verdict: "keep", note: "the easing, and the color too" });
 
-    lab.recordVerdict({ id, verdict: "keep" });
+    lab.recordVerdict({ id, action: "keep" });
     expect(meta()).toMatchObject({ verdict: "keep", note: null });
   });
 
   it("treats a Toss as final", () => {
     const { lab, id, meta } = labWithOne();
-    lab.recordVerdict({ id, verdict: "toss", note: "hate the color" });
+    lab.recordVerdict({ id, action: "toss", note: "hate the color" });
 
-    expect(() => lab.recordVerdict({ id, verdict: "keep" })).toThrow(/tossed/i);
+    expect(() => lab.recordVerdict({ id, action: "keep" })).toThrow(/tossed/i);
     expect(meta()).toMatchObject({ verdict: "toss", note: "hate the color" });
   });
 
   it("refuses a Verdict for an unknown Interaction", () => {
     const lab = openLab(makeLabDir());
 
-    expect(() => lab.recordVerdict({ id: "2026-10-30-z", verdict: "keep" })).toThrow(/no interaction/i);
-    expect(() => lab.recordVerdict({ id: "../../etc", verdict: "keep" })).toThrow(/no interaction/i);
+    expect(() => lab.recordVerdict({ id: "2026-10-30-z", action: "keep" })).toThrow(/no interaction/i);
+    expect(() => lab.recordVerdict({ id: "../../etc", action: "keep" })).toThrow(/no interaction/i);
   });
 
   it("refuses anything but keep, toss or unkeep, and leaves the Interaction alone", () => {
     const { lab, id, meta, htmlFile } = labWithOne();
 
     // Verdicts arrive as JSON from the Gallery, so the type alone doesn't guard this.
-    const verdict = "maybe" as "keep";
-    expect(() => lab.recordVerdict({ id, verdict })).toThrow(/verdict/i);
+    const verdict = "maybe" as VerdictAction;
+    expect(() => lab.recordVerdict({ id, action: verdict })).toThrow(/verdict/i);
     expect(meta()).toMatchObject({ verdict: null });
     expect(existsSync(htmlFile)).toBe(true);
   });
@@ -265,11 +265,11 @@ describe("Kept collection", () => {
     const unkept = register(lab, "Un-kept", "2026-10-30");
     register(lab, "Still in the Inbox", "2026-10-30");
     const newer = register(lab, "Wild keep", "2026-10-31");
-    lab.recordVerdict({ id: older, verdict: "keep" });
-    lab.recordVerdict({ id: tossed, verdict: "toss" });
-    lab.recordVerdict({ id: unkept, verdict: "keep" });
-    lab.recordVerdict({ id: unkept, verdict: "unkeep" });
-    lab.recordVerdict({ id: newer, verdict: "keep", note: "love the drift" });
+    lab.recordVerdict({ id: older, action: "keep" });
+    lab.recordVerdict({ id: tossed, action: "toss" });
+    lab.recordVerdict({ id: unkept, action: "keep" });
+    lab.recordVerdict({ id: unkept, action: "unkeep" });
+    lab.recordVerdict({ id: newer, action: "keep", note: "love the drift" });
 
     expect(lab.kept()).toEqual([
       { id: newer, brief: BRIEF, wildcard: true, title: "Wild keep", date: "2026-10-31", note: "love the drift" },
@@ -438,7 +438,7 @@ function judgedHistory(lab: Lab, history: PastVerdict[], startDate = "2026-01-01
       date: addDays(startDate, i),
       html: HTML,
     });
-    if (verdict) lab.recordVerdict({ id, verdict });
+    if (verdict) lab.recordVerdict({ id, action: verdict });
     return id;
   });
 }
@@ -515,10 +515,10 @@ describe("Weights", () => {
   it("follows only the latest Verdict when one changes", () => {
     const lab = openLab(makeLabDir(SMALL_RULES));
     const [id] = judgedHistory(lab, [{ brief: { trigger: "hover", feel: "springy" }, verdict: "keep" }]);
-    lab.recordVerdict({ id: id!, verdict: "keep", note: "still love it" });
+    lab.recordVerdict({ id: id!, action: "keep", note: "still love it" });
     expect(lab.weights().trigger.hover).toBeCloseTo(2 / 3); // one Keep, not two
 
-    lab.recordVerdict({ id: id!, verdict: "unkeep" });
+    lab.recordVerdict({ id: id!, action: "unkeep" });
 
     expect(lab.weights().trigger.hover).toBeCloseTo(1 / 3); // one Toss, and the Keep is gone
     expect(lab.weights().feel.springy).toBeCloseTo(1 / 3);
@@ -608,8 +608,8 @@ describe("Taste context", () => {
         date: addDays(startDate, i),
         html: HTML,
       });
-      if (verdict === "unkeep") lab.recordVerdict({ id, verdict: "keep", note: "first thought" });
-      if (verdict) lab.recordVerdict({ id, verdict, note });
+      if (verdict === "unkeep") lab.recordVerdict({ id, action: "keep", note: "first thought" });
+      if (verdict) lab.recordVerdict({ id, action: verdict, note });
       return id;
     });
   }
@@ -690,7 +690,7 @@ describe("Taste context", () => {
       "2026-10-01",
     );
     // `judged` already kept the first one; keep it again with a fresh Note.
-    lab.recordVerdict({ id: rekept, verdict: "keep", note: "even better on a phone" });
+    lab.recordVerdict({ id: rekept, action: "keep", note: "even better on a phone" });
 
     const { keeps, tossNotes } = lab.tasteContext({ date: "2026-10-30" });
 
@@ -713,11 +713,11 @@ describe("Taste context", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     // The newer Interactions get their Verdicts first; the older ones a day later.
     vi.setSystemTime(new Date("2026-10-20T09:00:00Z"));
-    lab.recordVerdict({ id: newer!, verdict: "keep" });
-    lab.recordVerdict({ id: newerTossed!, verdict: "toss", note: "too busy" });
+    lab.recordVerdict({ id: newer!, action: "keep" });
+    lab.recordVerdict({ id: newerTossed!, action: "toss", note: "too busy" });
     vi.setSystemTime(new Date("2026-10-21T09:00:00Z"));
-    lab.recordVerdict({ id: older!, verdict: "keep" });
-    lab.recordVerdict({ id: olderTossed!, verdict: "toss", note: "too slow" });
+    lab.recordVerdict({ id: older!, action: "keep" });
+    lab.recordVerdict({ id: olderTossed!, action: "toss", note: "too slow" });
 
     const { keeps, tossNotes } = lab.tasteContext({ date: "2026-10-30" });
 

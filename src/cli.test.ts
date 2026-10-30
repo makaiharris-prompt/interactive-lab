@@ -32,8 +32,8 @@ describe("lab CLI: taste-context", () => {
     const core = openLab(dir);
     const kept = core.registerInteraction({ brief: BRIEF, wildcard: false, title: "Rubber card", date: "2026-10-28", html: HTML });
     const tossed = core.registerInteraction({ brief: BRIEF, wildcard: true, title: "Fog field", date: "2026-10-29", html: HTML });
-    core.recordVerdict({ id: kept.id, verdict: "keep", note: "love the easing" });
-    core.recordVerdict({ id: tossed.id, verdict: "toss", note: "too muddy" });
+    core.recordVerdict({ id: kept.id, action: "keep", note: "love the easing" });
+    core.recordVerdict({ id: tossed.id, action: "toss", note: "too muddy" });
 
     const output = lab("taste-context", "--lab", dir, "--date", "2026-10-30");
 
@@ -98,8 +98,8 @@ function lastCommitFiles(dir: string): string[] {
 describe("lab CLI: commit-verdicts", () => {
   it("commits pending Verdicts on their own as `lab: verdicts`, leaving everything else uncommitted", () => {
     const { dir, core, ids } = makeLabRepo();
-    core.recordVerdict({ id: ids[0]!, verdict: "keep", note: "love it" });
-    core.recordVerdict({ id: ids[1]!, verdict: "toss" });
+    core.recordVerdict({ id: ids[0]!, action: "keep", note: "love it" });
+    core.recordVerdict({ id: ids[1]!, action: "toss" });
     // Not Verdicts: a new Interaction, and an unrelated change the user has staged.
     core.registerInteraction({ brief: BRIEF, wildcard: false, title: "New", date: "2026-10-30", html: HTML });
     writeFileSync(join(dir, "rules.yaml"), "axes:\n  trigger: [hover]\n");
@@ -151,7 +151,7 @@ describe("lab CLI: commit-batch", () => {
     const { dir, core, ids } = makeLabRepo();
     const batch = ["One", "Two", "Three"].map((title) => registerWithPoster(dir, title));
     // Not part of the batch: a pending Verdict and a leftover Interaction from another run.
-    core.recordVerdict({ id: ids[0]!, verdict: "keep" });
+    core.recordVerdict({ id: ids[0]!, action: "keep" });
     const leftover = registerWithPoster(dir, "Leftover", "2026-10-28");
 
     const output = lab("commit-batch", "--lab", dir, "--date", "2026-10-30", ...batch.flatMap((id) => ["--id", id]));

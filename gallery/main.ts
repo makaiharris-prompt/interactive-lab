@@ -1,4 +1,4 @@
-import type { InboxItem, KeptItem, VerdictInput, Weights } from "../src/lab/index.ts";
+import type { InboxItem, KeptItem, Verdict, VerdictInput, Weights } from "../src/lab/index.ts";
 
 const app = document.querySelector<HTMLElement>("#app")!;
 
@@ -220,14 +220,14 @@ async function postVerdict(input: VerdictInput): Promise<void> {
   }
 }
 
-async function judge(verdict: VerdictInput["verdict"]): Promise<void> {
+async function judge(verdict: Verdict): Promise<void> {
   const item = focused();
   if (!item || inbox.busy) return;
   const note = inbox.notes.get(item.id)?.trim() || null;
 
   inbox.busy = true;
   try {
-    await postVerdict({ id: item.id, verdict, note });
+    await postVerdict({ id: item.id, action: verdict, note });
   } catch (error) {
     setStatus(`Could not save the Verdict: ${(error as Error).message}`, "error");
     return;
@@ -430,7 +430,7 @@ async function unkeep(item: KeptItem): Promise<void> {
 
   keptCollection.busy = true;
   try {
-    await postVerdict({ id: item.id, verdict: "unkeep" });
+    await postVerdict({ id: item.id, action: "unkeep" });
   } catch (error) {
     setStatus(`Could not un-keep: ${(error as Error).message}`, "error");
     return;
@@ -447,7 +447,7 @@ async function unkeep(item: KeptItem): Promise<void> {
 const AT_FLOOR_SHARE = 0.0505;
 
 /**
- * Brief stats: the current Weight of every Axis value, so the lab owner can see their taste
+ * Brief stats: the current Weight of every Axis value, so the user can see their taste
  * change and spot an Axis narrowing to a few values (ADR 0007). Bars are scaled to the
  * Axis's heaviest value; the percentage is the value's share of its Axis's total weight,
  * which is how likely the picker is to choose it for a non-Wildcard Brief.

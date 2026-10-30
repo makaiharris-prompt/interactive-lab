@@ -8,6 +8,7 @@
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import type { Verdict } from "./index.ts";
 
 export interface Meta {
   brief: Record<string, string>;
@@ -15,7 +16,7 @@ export interface Meta {
   title: string;
   date: string;
   /** `null` while the Interaction is in the Inbox. */
-  verdict: "keep" | "toss" | null;
+  verdict: Verdict | null;
   note: string | null;
   /**
    * When the Verdict was given, as an ISO 8601 timestamp. Missing while in the Inbox, and on

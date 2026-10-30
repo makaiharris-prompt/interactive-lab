@@ -68,13 +68,21 @@ export interface KeptItem {
   note: string | null;
 }
 
-const VERDICTS = ["keep", "toss", "unkeep"] as const;
+/** A Verdict: Keep or Toss. */
+export type Verdict = "keep" | "toss";
+
+const VERDICT_ACTIONS = ["keep", "toss", "unkeep"] as const;
+
+/**
+ * What the user does to an Interaction: give it a Verdict (`keep`, `toss`), or `unkeep`,
+ * which turns an earlier Keep into a Toss.
+ */
+export type VerdictAction = (typeof VERDICT_ACTIONS)[number];
 
 export interface VerdictInput {
   /** The Interaction being judged. */
   id: string;
-  /** `unkeep` turns an earlier Keep into a Toss. */
-  verdict: (typeof VERDICTS)[number];
+  action: VerdictAction;
   /**
    * An optional free-text Note, saved with the Verdict. An un-keep without one keeps the
    * Keep's Note, so the resulting Toss still says what the user thought of it.
@@ -155,7 +163,7 @@ export interface Lab {
   interactionHtml(id: string): string | undefined;
   /** An Interaction's `poster.png` thumbnail (saved by the Smoke check), or `undefined` if there is none. */
   interactionPoster(id: string): Buffer | undefined;
-  /** Record a Verdict in the Interaction's metadata. It replaces any earlier Verdict. */
+  /** Record a Verdict (or un-keep) in the Interaction's metadata. It replaces any earlier Verdict. */
   recordVerdict(input: VerdictInput): void;
   /**
    * The current Weight of every Axis value in the rules file (ADR 0005):
@@ -254,18 +262,18 @@ export function openLab(labDir: string): Lab {
       return storage.readPoster(id);
     },
 
-    recordVerdict({ id, verdict, note = null }) {
-      if (!VERDICTS.includes(verdict)) throw new VerdictError(`Unknown Verdict "${verdict}"`);
+    recordVerdict({ id, action, note = null }) {
+      if (!VERDICT_ACTIONS.includes(action)) throw new VerdictError(`Unknown Verdict action "${action}"`);
       if (note !== null && typeof note !== "string") throw new VerdictError("A Note must be text");
       if (!storage.has(id)) throw new VerdictError(`No Interaction "${id}"`);
       const meta = storage.readMeta(id);
       // A Toss is final: its HTML is gone (ADR 0006).
       if (meta.verdict === "toss") throw new VerdictError(`${id} is already tossed`);
-      if (verdict === "unkeep" && meta.verdict !== "keep") {
+      if (action === "unkeep" && meta.verdict !== "keep") {
         throw new VerdictError(`Can't un-keep ${id}: it is not kept`);
       }
-      const recorded = verdict === "keep" ? "keep" : "toss";
-      const keptNote = verdict === "unkeep" && !note?.trim() ? meta.note : note;
+      const recorded: Verdict = action === "keep" ? "keep" : "toss";
+      const keptNote = action === "unkeep" && !note?.trim() ? meta.note : note;
       // Metadata first: if deleting the HTML fails, the Verdict is still on record.
       storage.writeMeta(id, { ...meta, verdict: recorded, note: keptNote, verdictAt: new Date().toISOString() });
       if (recorded === "toss") storage.deleteHtml(id);

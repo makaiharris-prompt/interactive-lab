@@ -8,12 +8,12 @@
  *   GET  /lab/interactions/<id>/source.html → its stored HTML, unaltered, for Copy source
  *   GET  /lab/interactions/<id>/poster.png → its thumbnail, likewise
  *   GET  /lab/vendor/<library>/<file>      → allow-listed vendored libraries (see interaction-server.ts)
- *   POST /lab/verdicts                     → Record a Verdict; body `{ id, verdict, note? }`
+ *   POST /lab/verdicts                     → Record a Verdict, or un-keep; body `{ id, action, note? }`
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin } from "vite";
 import { interactionMiddleware } from "./interaction-server.ts";
-import { openLab, VerdictError, type Lab } from "./lab/index.ts";
+import { openLab, VerdictError, type Lab, type VerdictAction } from "./lab/index.ts";
 
 const MAX_BODY_BYTES = 64 * 1024;
 
@@ -50,8 +50,9 @@ async function postVerdict(lab: Lab, req: IncomingMessage, res: ServerResponse):
     return;
   }
   try {
-    const { id, verdict, note } = (await readJson(req)) as Record<string, unknown>;
-    lab.recordVerdict({ id: String(id), verdict: verdict as "keep", note: note as string | null });
+    const { id, action, note } = (await readJson(req)) as Record<string, unknown>;
+    // Unchecked JSON: recordVerdict validates the action and the Note itself.
+    lab.recordVerdict({ id: String(id), action: action as VerdictAction, note: note as string | null });
     sendJson(res, 200, { ok: true });
   } catch (error) {
     if (!(error instanceof VerdictError)) throw error;

@@ -1,5 +1,5 @@
 /**
- * The Smoke check (ADR 0004): the gate every Interaction must pass before the lab owner sees it.
+ * The Smoke check (ADR 0004): the gate every Interaction must pass before the user sees it.
  *
  * It loads an Interaction in headless Chromium the way the Gallery does (served by the shared
  * interaction server, so allow-listed libraries resolve through the import map, inside an
