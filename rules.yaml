@@ -52,5 +52,7 @@ hardConstraints:
   - Must pass the Smoke check.
 
 # Library allow-list: the only libraries an Interaction may import.
+# Each one must be vendored in vendor/<name>/ with an index.js entry point; the
+# Gallery's import map then resolves `<name>` and `<name>/...` to it.
 libraries:
   - three
