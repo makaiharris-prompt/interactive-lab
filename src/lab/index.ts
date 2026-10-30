@@ -75,7 +75,10 @@ export interface VerdictInput {
   id: string;
   /** `unkeep` turns an earlier Keep into a Toss. */
   verdict: (typeof VERDICTS)[number];
-  /** An optional free-text Note, saved with the Verdict. */
+  /**
+   * An optional free-text Note, saved with the Verdict. An un-keep without one keeps the
+   * Keep's Note, so the resulting Toss still says what the user thought of it.
+   */
   note?: string | null;
 }
 
@@ -262,8 +265,9 @@ export function openLab(labDir: string): Lab {
         throw new VerdictError(`Can't un-keep ${id}: it is not kept`);
       }
       const recorded = verdict === "keep" ? "keep" : "toss";
+      const keptNote = verdict === "unkeep" && !note?.trim() ? meta.note : note;
       // Metadata first: if deleting the HTML fails, the Verdict is still on record.
-      storage.writeMeta(id, { ...meta, verdict: recorded, note });
+      storage.writeMeta(id, { ...meta, verdict: recorded, note: keptNote });
       if (recorded === "toss") storage.deleteHtml(id);
     },
 

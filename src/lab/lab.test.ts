@@ -197,6 +197,15 @@ describe("record a Verdict", () => {
     expect(existsSync(htmlFile)).toBe(false);
   });
 
+  it("keeps the Keep's Note on an un-keep with no new Note", () => {
+    const { lab, id, meta } = labWithOne();
+    lab.recordVerdict({ id, verdict: "keep", note: "love the easing" });
+
+    lab.recordVerdict({ id, verdict: "unkeep" });
+
+    expect(meta()).toMatchObject({ verdict: "toss", note: "love the easing" });
+  });
+
   it("refuses to un-keep an Interaction that isn't kept", () => {
     const { lab, id, meta, htmlFile } = labWithOne();
 
@@ -684,8 +693,11 @@ describe("Taste context", () => {
     const { keeps, tossNotes } = lab.tasteContext({ date: "2026-10-30" });
 
     expect(keeps).toEqual([expect.objectContaining({ id: rekept, note: "even better on a phone" })]);
-    expect(tossNotes).toEqual([expect.objectContaining({ id: unkeptWithNote, note: "got old fast" })]);
-    expect([...keeps, ...tossNotes].map((t) => t.id)).not.toContain(unkeptSilently);
+    // Un-keeping without a new Note keeps the Keep's Note, so the un-kept one still counts.
+    expect(tossNotes).toEqual([
+      expect.objectContaining({ id: unkeptSilently, note: "first thought" }),
+      expect.objectContaining({ id: unkeptWithNote, note: "got old fast" }),
+    ]);
   });
 
   it("is empty in a lab with no Interactions", () => {
