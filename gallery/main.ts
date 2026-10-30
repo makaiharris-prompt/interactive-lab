@@ -1,4 +1,4 @@
-import type { InboxItem, VerdictInput } from "../src/lab/index.ts";
+import type { InboxItem, VerdictInput, Weights } from "../src/lab/index.ts";
 
 const app = document.querySelector<HTMLElement>("#app")!;
 
@@ -241,7 +241,7 @@ function isTyping(target: EventTarget | null): boolean {
 
 document.addEventListener("keydown", (event) => {
   if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
-  if (isTyping(event.target) || !focused()) return;
+  if (view !== "inbox" || isTyping(event.target) || !focused()) return;
 
   const action: Record<string, () => void> = {
     k: () => judge("keep"),
@@ -256,17 +256,91 @@ document.addEventListener("keydown", (event) => {
   run();
 });
 
-async function main(): Promise<void> {
+/** A value whose share of its Axis is this close to the 5% floor is shown as held up by it. */
+const AT_FLOOR_SHARE = 0.0505;
+
+/**
+ * Brief stats: the current Weight of every Axis value, so the lab owner can see their taste
+ * change and spot an Axis narrowing to a few values (ADR 0007). Bars are scaled to the
+ * Axis's heaviest value; the percentage is the value's share of its Axis's total weight,
+ * which is how likely the picker is to choose it for a non-Wildcard Brief.
+ */
+function renderStats(weights: Weights): void {
+  const axes = Object.entries(weights).map(([axis, values]) => {
+    const total = Object.values(values).reduce((sum, w) => sum + w, 0);
+    const max = Math.max(...Object.values(values));
+    const rows = Object.entries(values).map(([value, weight]) => {
+      const share = weight / total;
+      const bar = el("span", { className: "bar" }, [el("span", { className: "bar-fill" })]);
+      (bar.firstChild as HTMLElement).style.width = `${(weight / max) * 100}%`;
+      return el("li", { className: share <= AT_FLOOR_SHARE ? "is-at-floor" : "" }, [
+        el("span", { className: "value", textContent: value }),
+        bar,
+        el("span", { className: "weight", textContent: weight.toFixed(2), title: "Weight" }),
+        el("span", {
+          className: "share",
+          textContent: `${(share * 100).toFixed(0)}%`,
+          title: share <= AT_FLOOR_SHARE ? "Held at the 5% floor" : "Share of this Axis",
+        }),
+      ]);
+    });
+    return el("section", { className: "axis" }, [el("h3", { textContent: axis }), el("ol", {}, rows)]);
+  });
+
+  app.replaceChildren(
+    el("section", { className: "stats" }, [
+      el("h2", { textContent: "Brief stats" }),
+      el("p", {
+        className: "stats-intro",
+        textContent:
+          "Weights start at 0.50. Keeps raise them and Tosses lower them; the Inbox doesn't count. " +
+          "The percentage is each value's chance of being picked for a non-Wildcard Brief, never below 5%.",
+      }),
+      ...axes,
+    ]),
+  );
+}
+
+type View = "inbox" | "stats";
+let view: View = "inbox";
+
+function viewFromHash(): View {
+  return location.hash === "#/stats" ? "stats" : "inbox";
+}
+
+async function loadJson<T>(url: string): Promise<T> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  return response.json();
+}
+
+async function show(next: View): Promise<void> {
+  view = next;
+  for (const tab of document.querySelectorAll<HTMLAnchorElement>(".masthead .tab")) {
+    const active = (tab.hash === "#/stats" ? "stats" : "inbox") === next;
+    tab.classList.toggle("is-active", active);
+    if (active) tab.setAttribute("aria-current", "page");
+    else tab.removeAttribute("aria-current");
+  }
   try {
-    const response = await fetch("/lab/inbox.json");
-    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-    inbox.items = await response.json();
-    renderInbox();
+    if (next === "stats") {
+      const weights = await loadJson<Weights>("/lab/weights.json");
+      if (view === "stats") renderStats(weights);
+    } else {
+      const items = await loadJson<InboxItem[]>("/lab/inbox.json");
+      if (view === "inbox") {
+        inbox.items = items;
+        renderInbox();
+      }
+    }
   } catch (error) {
+    if (view !== next) return;
+    const what = next === "stats" ? "the Brief stats" : "the Inbox";
     app.replaceChildren(
-      el("p", { className: "error", textContent: `Could not load the Inbox: ${(error as Error).message}` }),
+      el("p", { className: "error", textContent: `Could not load ${what}: ${(error as Error).message}` }),
     );
   }
 }
 
-main();
+window.addEventListener("hashchange", () => show(viewFromHash()));
+show(viewFromHash());

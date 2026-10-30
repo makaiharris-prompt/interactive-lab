@@ -40,6 +40,16 @@ body {
   color: var(--muted);
 }
 
+.masthead nav {
+  display: flex;
+  gap: 16px;
+}
+
+.tab {
+  text-decoration: none;
+}
+
+.tab:hover,
 .tab.is-active {
   color: var(--text);
 }
@@ -246,4 +256,93 @@ kbd {
 .queue .wildcard {
   padding: 1px 6px;
   font-size: 11px;
+}
+
+.stats h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.stats-intro {
+  max-width: 64ch;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.axis {
+  margin-top: 28px;
+}
+
+.axis h3 {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.axis ol {
+  display: grid;
+  /* Fixed columns, so the bars line up across Axes. */
+  grid-template-columns: 11rem 1fr 4ch 4ch;
+  gap: 6px 16px;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+}
+
+.axis li {
+  display: contents;
+}
+
+.axis .value {
+  overflow-wrap: anywhere;
+}
+
+.axis .bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.axis .bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--keep);
+}
+
+.axis .is-at-floor .bar-fill {
+  background: var(--toss);
+}
+
+.axis .weight,
+.axis .share {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.axis .is-at-floor .share {
+  color: var(--toss);
+}
+
+@media (max-width: 560px) {
+  #app {
+    padding: 16px;
+  }
+
+  .axis ol {
+    grid-template-columns: 8rem 1fr 4ch;
+  }
+
+  .axis .weight {
+    display: none;
+  }
 }

@@ -2,6 +2,7 @@
  * The Gallery's dev-server side: a Vite plugin that is a thin adapter over the lab core.
  *
  *   GET  /lab/inbox.json                  → the Inbox
+ *   GET  /lab/weights.json                → the current Weights, for Brief stats
  *   GET  /lab/interactions/<id>/index.html → an Interaction's HTML, served untouched
  *   POST /lab/verdicts                    → Record a Verdict; body `{ id, verdict, note? }`
  */
@@ -67,6 +68,11 @@ export function labGallery(labDir: string): Plugin {
 
         if (path === "/lab/inbox.json") {
           sendJson(res, 200, lab.inbox());
+          return;
+        }
+
+        if (path === "/lab/weights.json") {
+          sendJson(res, 200, lab.weights());
           return;
         }
 
