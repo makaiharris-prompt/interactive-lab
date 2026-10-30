@@ -6,6 +6,8 @@
   --text: #ececf1;
   --muted: #8b8b94;
   --accent: #f5c542;
+  --keep: #5ad19a;
+  --toss: #f2716b;
   font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
 }
 
@@ -128,6 +130,93 @@ body {
 .queue button.is-focused {
   border-color: var(--text);
   color: var(--text);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.actions button:hover {
+  border-color: var(--muted);
+}
+
+.actions .keep:hover {
+  border-color: var(--keep);
+}
+
+.actions .toss:hover {
+  border-color: var(--toss);
+}
+
+.actions .copy {
+  margin-left: auto;
+}
+
+kbd {
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+  font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.note {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+
+.note[hidden] {
+  display: none;
+}
+
+.note:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.status {
+  min-height: 20px;
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.status[data-kind="error"] {
+  color: var(--toss);
+}
+
+.hints {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .empty,
