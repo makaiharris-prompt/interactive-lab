@@ -61,6 +61,40 @@ export class VerdictError extends Error {
   override name = "VerdictError";
 }
 
+export interface TasteContextOptions {
+  /** The day Claude is writing on, `YYYY-MM-DD`. */
+  date: string;
+}
+
+/** A recent Keep: what it was built from, and what the user said about it. */
+export interface TasteKeep {
+  id: string;
+  title: string;
+  brief: Brief;
+  note: string | null;
+}
+
+/** The Taste context (ADR 0005): steers *how* Claude builds, and which ideas not to repeat. */
+export interface TasteContext {
+  /** At most 10 most recent Keeps, newest first. */
+  keeps: TasteKeep[];
+  /** At most 10 most recent Tosses that have a Note, newest first. Tosses without a Note are skipped. */
+  tossNotes: TasteTossNote[];
+  /** Titles of every Interaction (any Verdict, or none) dated in the 30 days up to `date`, newest first. */
+  recentTitles: string[];
+}
+
+/** A recent Toss with a Note: what the user disliked about it. */
+export interface TasteTossNote {
+  id: string;
+  title: string;
+  brief: Brief;
+  note: string;
+}
+
+/** The Taste context holds at most this many Keeps, and this many Tosses with a Note. */
+export const TASTE_CONTEXT_SIZE = 10;
+
 export const BATCH_SIZE = 3;
 
 /** Pick briefs never reuses a Brief from an Interaction dated less than this many days before the batch. */
@@ -86,6 +120,14 @@ export interface Lab {
   interactionHtml(id: string): string | undefined;
   /** Record a Verdict in the Interaction's metadata. It replaces any earlier Verdict. */
   recordVerdict(input: VerdictInput): void;
+  /**
+   * The Taste context for writing on `date`: the Briefs and Notes of the 10 most recent Keeps,
+   * the Notes of the 10 most recent Tosses that have one, and the titles from the last 30 days.
+   * Only each Interaction's latest Verdict counts (an un-kept Interaction is a Toss).
+   * "Recent" means the Interaction's date (and position in its batch), newest first:
+   * Verdicts carry no timestamp of their own.
+   */
+  tasteContext(options: TasteContextOptions): TasteContext;
 }
 
 export function openLab(labDir: string): Lab {
@@ -152,6 +194,28 @@ export function openLab(labDir: string): Lab {
       // Metadata first: if deleting the HTML fails, the Verdict is still on record.
       storage.writeMeta(id, { ...meta, verdict: recorded, note });
       if (recorded === "toss") storage.deleteHtml(id);
+    },
+
+    tasteContext({ date }) {
+      const newestFirst = storage
+        .ids()
+        .reverse()
+        .map((id) => ({ id, ...storage.readMeta(id) }));
+      const keeps = newestFirst
+        .filter((meta) => meta.verdict === "keep")
+        .slice(0, TASTE_CONTEXT_SIZE)
+        .map(({ id, title, brief, note }) => ({ id, title, brief, note }));
+      const tossNotes = newestFirst
+        .filter((meta) => meta.verdict === "toss" && meta.note?.trim())
+        .slice(0, TASTE_CONTEXT_SIZE)
+        .map(({ id, title, brief, note }) => ({ id, title, brief, note: note! }));
+      const recentTitles = newestFirst
+        .filter((meta) => {
+          const age = daysBetween(meta.date, date);
+          return age >= 0 && age < REPEAT_WINDOW_DAYS;
+        })
+        .map((meta) => meta.title);
+      return { keeps, tossNotes, recentTitles };
     },
   };
 }
