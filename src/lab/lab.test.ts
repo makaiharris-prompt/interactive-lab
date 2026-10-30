@@ -317,3 +317,117 @@ describe("repeat avoidance", () => {
     expect(() => lab.pickBriefs({ date: "2026-10-30", seed: 1 })).toThrow(/30 days/);
   });
 });
+
+interface PastVerdict {
+  brief: Brief;
+  /** `null` leaves the Interaction in the Inbox. */
+  verdict: "keep" | "toss" | null;
+  wildcard?: boolean;
+}
+
+/** Register one past Interaction per entry, on consecutive days from `startDate`, and judge it. */
+function judgedHistory(lab: Lab, history: PastVerdict[], startDate = "2026-01-01"): string[] {
+  return history.map(({ brief, verdict, wildcard = false }, i) => {
+    const { id } = lab.registerInteraction({
+      brief,
+      wildcard,
+      title: `Past ${i}`,
+      date: addDays(startDate, i),
+      html: HTML,
+    });
+    if (verdict) lab.recordVerdict({ id, verdict });
+    return id;
+  });
+}
+
+function repeat<T>(times: number, item: T): T[] {
+  return Array.from({ length: times }, () => item);
+}
+
+/** A Weight's share of its Axis's total. */
+function share(weights: Record<string, number>, value: string): number {
+  const total = Object.values(weights).reduce((sum, w) => sum + w, 0);
+  return weights[value]! / total;
+}
+
+describe("Weights", () => {
+  it("gives every Axis value 0.5 before any Verdict", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+
+    expect(lab.weights()).toEqual({
+      trigger: { hover: 0.5, click: 0.5, drag: 0.5 },
+      feel: { springy: 0.5, snappy: 0.5, eerie: 0.5 },
+    });
+  });
+
+  it("is (keeps + 1) / (keeps + tosses + 2) for each Axis value in a judged Brief", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    judgedHistory(lab, [
+      ...repeat(3, { brief: { trigger: "hover", feel: "springy" }, verdict: "keep" as const }),
+      { brief: { trigger: "hover", feel: "snappy" }, verdict: "toss" },
+      { brief: { trigger: "click", feel: "springy" }, verdict: "toss" },
+    ]);
+
+    expect(lab.weights()).toEqual({
+      // hover: 3 Keeps, 1 Toss → 4/6. click: 1 Toss → 1/3. drag: untried → 1/2.
+      trigger: { hover: expect.closeTo(4 / 6), click: expect.closeTo(1 / 3), drag: 0.5 },
+      // springy: 3 Keeps, 1 Toss → 4/6. snappy: 1 Toss → 1/3. eerie: untried → 1/2.
+      feel: { springy: expect.closeTo(4 / 6), snappy: expect.closeTo(1 / 3), eerie: 0.5 },
+    });
+  });
+
+  it("can't drop a value to zero with one Toss, so it still gets picked", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    judgedHistory(lab, [{ brief: { trigger: "drag", feel: "eerie" }, verdict: "toss" }]);
+
+    expect(lab.weights().trigger.drag).toBeCloseTo(1 / 3);
+    const ordinaryTriggers = Array.from({ length: 30 }, (_, seed) =>
+      lab.pickBriefs({ date: "2026-10-30", seed }).filter((p) => !p.wildcard).map((p) => p.brief.trigger),
+    ).flat();
+    expect(ordinaryTriggers).toContain("drag");
+  });
+
+  it("ignores Interactions still in the Inbox", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    judgedHistory(lab, [
+      ...repeat(5, { brief: { trigger: "hover", feel: "springy" }, verdict: null }),
+      { brief: { trigger: "click", feel: "snappy" }, verdict: "keep" },
+      ...repeat(5, { brief: { trigger: "click", feel: "snappy" }, verdict: null }),
+    ]);
+
+    expect(lab.weights()).toEqual({
+      trigger: { hover: 0.5, click: expect.closeTo(2 / 3), drag: 0.5 },
+      feel: { springy: 0.5, snappy: expect.closeTo(2 / 3), eerie: 0.5 },
+    });
+  });
+
+  it("counts Wildcard Verdicts like any other", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    judgedHistory(lab, [{ brief: { trigger: "drag", feel: "eerie" }, verdict: "keep", wildcard: true }]);
+
+    expect(lab.weights().trigger.drag).toBeCloseTo(2 / 3);
+    expect(lab.weights().feel.eerie).toBeCloseTo(2 / 3);
+  });
+
+  it("follows only the latest Verdict when one changes", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    const [id] = judgedHistory(lab, [{ brief: { trigger: "hover", feel: "springy" }, verdict: "keep" }]);
+    lab.recordVerdict({ id: id!, verdict: "keep", note: "still love it" });
+    expect(lab.weights().trigger.hover).toBeCloseTo(2 / 3); // one Keep, not two
+
+    lab.recordVerdict({ id: id!, verdict: "unkeep" });
+
+    expect(lab.weights().trigger.hover).toBeCloseTo(1 / 3); // one Toss, and the Keep is gone
+    expect(lab.weights().feel.springy).toBeCloseTo(1 / 3);
+  });
+
+  it("ignores past Briefs' values that are no longer in the rules file", () => {
+    const lab = openLab(makeLabDir(SMALL_RULES));
+    judgedHistory(lab, [{ brief: { trigger: "scroll", feel: "springy", palette: "neon" }, verdict: "keep" }]);
+
+    expect(lab.weights()).toEqual({
+      trigger: { hover: 0.5, click: 0.5, drag: 0.5 },
+      feel: { springy: expect.closeTo(2 / 3), snappy: 0.5, eerie: 0.5 },
+    });
+  });
+});

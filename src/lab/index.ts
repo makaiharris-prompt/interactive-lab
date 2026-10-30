@@ -9,6 +9,9 @@ import { seededRandom } from "./random.ts";
 import { readRules } from "./rules.ts";
 import { briefKey, ordinaryBrief, unusedBrief, wildcardBrief } from "./sampling.ts";
 import { Storage } from "./storage.ts";
+import { computeWeights, type Weights } from "./weights.ts";
+
+export type { Weights };
 
 /** One value per Axis, keyed by Axis name, e.g. `{ trigger: "drag", feel: "springy" }`. */
 export type Brief = Record<string, string>;
@@ -86,6 +89,12 @@ export interface Lab {
   interactionHtml(id: string): string | undefined;
   /** Record a Verdict in the Interaction's metadata. It replaces any earlier Verdict. */
   recordVerdict(input: VerdictInput): void;
+  /**
+   * The current Weight of every Axis value in the rules file (ADR 0005):
+   * `(keeps + 1) / (keeps + tosses + 2)`, raised where needed so no value falls below 5% of
+   * its Axis's total. Only each Interaction's latest Verdict counts; the Inbox counts for nothing.
+   */
+  weights(): Weights;
 }
 
 export function openLab(labDir: string): Lab {
@@ -152,6 +161,10 @@ export function openLab(labDir: string): Lab {
       // Metadata first: if deleting the HTML fails, the Verdict is still on record.
       storage.writeMeta(id, { ...meta, verdict: recorded, note });
       if (recorded === "toss") storage.deleteHtml(id);
+    },
+
+    weights() {
+      return computeWeights(readRules(labDir).axes, storage.ids().map((id) => storage.readMeta(id)));
     },
   };
 }
