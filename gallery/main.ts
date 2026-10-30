@@ -495,15 +495,7 @@ function renderStats(stats: BriefStats): void {
   );
 }
 
-type View = "inbox" | "kept" | "stats";
-let view: View = "inbox";
-
 const KEPT_HASH = /^#\/kept(?:\/(.+))?$/;
-
-function viewFromHash(hash = location.hash): View {
-  if (KEPT_HASH.test(hash)) return "kept";
-  return hash === "#/stats" ? "stats" : "inbox";
-}
 
 /** The Kept Interaction opened by the hash (`#/kept/<id>`), if any. */
 function openIdFromHash(): string | undefined {
@@ -517,6 +509,57 @@ async function loadJson<T>(url: string): Promise<T> {
   return response.json();
 }
 
+interface ViewSpec {
+  /** What the view shows, for error messages. */
+  what: string;
+  /** Whether the address bar's hash shows this view. The Inbox shows when no other view matches. */
+  matches(hash: string): boolean;
+  /** Fetch the view's data; the returned function renders it. */
+  load(): Promise<() => void>;
+}
+
+/** Every view in the Gallery, one entry each. */
+const VIEWS = {
+  inbox: {
+    what: "the Inbox",
+    matches: (hash) => hash === "" || hash === "#/",
+    load: async () => {
+      const items = await loadJson<InboxItem[]>("/lab/inbox.json");
+      return () => {
+        inbox.items = items;
+        renderInbox();
+      };
+    },
+  },
+  kept: {
+    what: "the Kept collection",
+    matches: (hash) => KEPT_HASH.test(hash),
+    load: async () => {
+      const items = await loadJson<KeptItem[]>("/lab/kept.json");
+      return () => {
+        keptCollection.items = items;
+        keptCollection.openId = openIdFromHash();
+        renderKept();
+      };
+    },
+  },
+  stats: {
+    what: "the Brief stats",
+    matches: (hash) => hash === "#/stats",
+    load: async () => {
+      const stats = await loadJson<BriefStats>("/lab/brief-stats.json");
+      return () => renderStats(stats);
+    },
+  },
+} satisfies Record<string, ViewSpec>;
+
+type View = keyof typeof VIEWS;
+let view: View = "inbox";
+
+function viewFromHash(hash = location.hash): View {
+  return (Object.keys(VIEWS) as View[]).find((name) => VIEWS[name].matches(hash)) ?? "inbox";
+}
+
 async function show(next: View): Promise<void> {
   view = next;
   for (const tab of document.querySelectorAll<HTMLAnchorElement>(".masthead .tab")) {
@@ -525,29 +568,15 @@ async function show(next: View): Promise<void> {
     if (active) tab.setAttribute("aria-current", "page");
     else tab.removeAttribute("aria-current");
   }
+  const spec = VIEWS[next];
   try {
-    if (next === "stats") {
-      const stats = await loadJson<BriefStats>("/lab/brief-stats.json");
-      if (view === "stats") renderStats(stats);
-    } else if (next === "kept") {
-      const items = await loadJson<KeptItem[]>("/lab/kept.json");
-      if (view === "kept") {
-        keptCollection.items = items;
-        keptCollection.openId = openIdFromHash();
-        renderKept();
-      }
-    } else {
-      const items = await loadJson<InboxItem[]>("/lab/inbox.json");
-      if (view === "inbox") {
-        inbox.items = items;
-        renderInbox();
-      }
-    }
+    const render = await spec.load();
+    // Skip it if another view was chosen while this one loaded.
+    if (view === next) render();
   } catch (error) {
     if (view !== next) return;
-    const what = { inbox: "the Inbox", kept: "the Kept collection", stats: "the Brief stats" }[next];
     app.replaceChildren(
-      el("p", { className: "error", textContent: `Could not load ${what}: ${(error as Error).message}` }),
+      el("p", { className: "error", textContent: `Could not load ${spec.what}: ${(error as Error).message}` }),
     );
   }
 }
